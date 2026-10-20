@@ -217,6 +217,7 @@ def main():
             note = QLabel("读写权限仅对已配置安全测试的项目开放；敏感文件仍需单独审批。")
             note.setObjectName("muted")
             p.addWidget(note)
+            self.projects.itemSelectionChanged.connect(self.sync_selected_mode)
 
             p = self.panel("Codex 任务", "查看实际测试和写回结果，并从桌面发起本地任务。")
             row = QHBoxLayout()
@@ -242,6 +243,9 @@ def main():
             row2 = QHBoxLayout()
             row2.addWidget(self.btn("刷新任务", self.refresh_tasks))
             row2.addWidget(self.btn("复查任务状态", self.show_task_current))
+            row2.addWidget(self.btn("续接选中任务", self.continue_selected))
+            row2.addWidget(self.btn("重试失败任务", self.retry_selected))
+            row2.addWidget(self.btn("取消未完成任务", self.cancel_selected))
             p.addLayout(row2)
 
             p = self.panel("长期共享记忆", "同一个 SQLite 数据库供网页 MCP 和 Bridge 委派的 Codex 使用。")
@@ -273,11 +277,19 @@ def main():
 
             p = self.panel("文件浏览", "仅浏览已授权项目中的文本文件，不展示隐藏凭据目录。")
             self.file_project = QComboBox()
-            self.file_project.currentIndexChanged.connect(self.refresh_files)
+            self.file_project.currentIndexChanged.connect(self.reset_files)
             p.addWidget(self.file_project)
+            directory = QHBoxLayout()
+            self.file_folder = QLineEdit(".")
+            self.file_folder.setReadOnly(True)
+            directory.addWidget(self.file_folder, 1)
+            directory.addWidget(self.btn("返回上级", self.file_up))
+            directory.addWidget(self.btn("刷新目录", self.refresh_files))
+            p.addLayout(directory)
             box = QHBoxLayout()
             self.file_list = QListWidget()
             self.file_list.currentRowChanged.connect(self.show_file)
+            self.file_list.itemDoubleClicked.connect(self.open_file_item)
             self.file_preview = QTextEdit()
             self.file_preview.setReadOnly(True)
             box.addWidget(self.file_list, 2)
@@ -332,6 +344,64 @@ def main():
                 self.refresh_memory()
                 self.refresh_files()
                 self.refresh_health()
+            except Exception as exc:
+                self.alert(exc, True)
+
+        def sync_selected_mode(self):
+            row = self.projects.currentRow()
+            if row < 0:
+                return
+            project_id = self.projects.item(row, 0).data(Qt.UserRole)
+            current = next((p for p in self.studio.config()["projects"]
+                            if p["id"] == project_id), None)
+            if current is not None:
+                self.mode.setCurrentIndex({"off":0,"read":1,"write":2}[project_mode(current)])
+
+        def selected_task(self):
+            row = self.task_list.currentRow()
+            entries = getattr(self, "task_records", [])
+            return entries[row] if 0 <= row < len(entries) else None
+
+        def continue_selected(self):
+            task = self.selected_task()
+            if not task:
+                return self.alert("请选择需要续接的历史任务。")
+            prompt = self.prompt.toPlainText().strip()
+            if not prompt:
+                return self.alert("请在上方输入续接任务的要求。")
+            if QMessageBox.question(self,"续接 Codex","从已有会话继续工作？") != QMessageBox.Yes:
+                return
+            try:
+                bridge = Bridge(self.studio.config())
+                result = bridge.submit(task["project_id"], prompt,
+                                       task.get("mode", "read"), parent_id=task["id"])
+                self.alert("已续接任务：" + result["id"][:12])
+                self.refresh_tasks()
+            except Exception as exc:
+                self.alert(exc, True)
+
+        def retry_selected(self):
+            task = self.selected_task()
+            if not task:
+                return self.alert("请选择任务。")
+            if QMessageBox.question(self,"重新执行","重试该失败/中断任务？") != QMessageBox.Yes:
+                return
+            try:
+                result = Bridge(self.studio.config()).retry(task["id"])
+                self.alert("已重新排队：" + result["id"][:12])
+                self.refresh_tasks()
+            except Exception as exc:
+                self.alert(exc, True)
+
+        def cancel_selected(self):
+            task = self.selected_task()
+            if not task:
+                return self.alert("请选择任务。")
+            if QMessageBox.question(self,"取消任务","取消这个尚未结束的任务？") != QMessageBox.Yes:
+                return
+            try:
+                Bridge(self.studio.config()).cancel(task["id"])
+                self.refresh_tasks()
             except Exception as exc:
                 self.alert(exc, True)
 
@@ -498,6 +568,25 @@ def main():
             except Exception as exc:
                 self.alert(exc, True)
 
+        def reset_files(self):
+            self.file_folder.setText(".")
+            self.refresh_files()
+
+        def file_up(self):
+            old = self.file_folder.text().strip() or "."
+            self.file_folder.setText(str(Path(old).parent))
+            self.refresh_files()
+
+        def open_file_item(self, item):
+            row = self.file_list.row(item)
+            if 0 <= row < len(self.file_paths):
+                relative, is_dir = self.file_paths[row]
+                if is_dir:
+                    self.file_folder.setText(relative)
+                    self.refresh_files()
+                else:
+                    self.show_file(row)
+
         def refresh_files(self):
             pid = self.active_id(self.file_project)
             self.file_list.clear()
@@ -508,36 +597,56 @@ def main():
             try:
                 conf = self.studio.config()
                 item = next(p for p in conf["projects"] if p["id"] == pid)
-                project_root = Path(item["root"]).resolve()
-                # Bounded top-level preview; no implicit full disk scans.
-                for file in sorted(project_root.iterdir()):
-                    if len(self.file_paths) >= 100:
+                root = Path(item["root"]).resolve(strict=True)
+                relative = self.file_folder.text().strip() or "."
+                target = root.joinpath(relative)
+                # No symlinks anywhere in the relative path; no directory traversal.
+                if (relative.startswith("/") or ".." in Path(relative).parts or
+                    any((root / Path(*Path(relative).parts[:i])).is_symlink()
+                        for i in range(1, len(Path(relative).parts)+1))):
+                    raise PermissionError("路径不属于授权项目")
+                target = target.resolve(strict=True)
+                if not target.is_relative_to(root) or not target.is_dir():
+                    raise PermissionError("目录越界")
+                for item_path in sorted(target.iterdir(), key=lambda x:x.name.casefold()):
+                    if len(self.file_paths) >= 250:
                         break
-                    if file.name.startswith(".") or not file.is_file() or file.is_symlink():
+                    if item_path.name.startswith(".") or item_path.is_symlink():
+                        continue
+                    rel = item_path.relative_to(root).as_posix()
+                    if item_path.is_dir():
+                        self.file_paths.append((rel, True))
+                        self.file_list.addItem("📁  " + item_path.name)
+                        continue
+                    if not item_path.is_file():
                         continue
                     try:
-                        checked(project_root, file.name, item["include"])
+                        checked(root, rel, item["include"])
                     except ValueError:
                         continue
-                    self.file_paths.append(file.name)
-                    self.file_list.addItem(file.name)
-            except Exception:
-                pass
+                    self.file_paths.append((rel, False))
+                    self.file_list.addItem("📄  " + item_path.name)
+            except Exception as exc:
+                self.file_preview.setPlainText("无法列出目录：" + str(exc))
 
         def show_file(self, index):
             pid = self.active_id(self.file_project)
             if not pid or not 0 <= index < len(self.file_paths):
                 return
+            relative, is_dir = self.file_paths[index]
+            if is_dir:
+                self.file_preview.setPlainText("双击文件夹进入：" + relative)
+                return
             try:
                 record = self.studio.project(pid)
                 from bridge.filetools import _redact
-                blob, _ = _read_at(Path(record["root"]), _check_path(self.file_paths[index]))
+                blob, _ = _read_at(Path(record["root"]), _check_path(relative))
                 if blob is None or len(blob) > 250_000:
-                    raise ValueError("只支持不超过 250KB 的文本文件")
-                text = blob.decode("utf-8")
-                if _redact(text)[1]:
+                    raise ValueError("只支持不超过 250KB 的 UTF-8 文本文件")
+                content = blob.decode("utf-8")
+                if _redact(content)[1]:
                     raise PermissionError("文件内容疑似含凭据，不显示")
-                self.file_preview.setPlainText(text)
+                self.file_preview.setPlainText(content)
             except Exception as exc:
                 self.file_preview.setPlainText("无法读取：" + str(exc))
 
