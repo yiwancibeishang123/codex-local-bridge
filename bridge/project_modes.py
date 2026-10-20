@@ -138,8 +138,8 @@ class ProjectModes:
             # otherwise re-enabling with the same scope could resurrect access.
             from .core import Bridge
             try:
-                if mode != "write":
-                    # The new effective settings disable this project; construct
+                if mode != "write" and old == "write":
+                    # Demotion from a prior writable grant must revoke it; construct
                     # against the previous config so revocation can still locate it.
                     Bridge(json.loads(raw)).authorization.revoke(project_id)
                 else:
