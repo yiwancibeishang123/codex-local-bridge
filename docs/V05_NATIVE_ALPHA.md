@@ -4,13 +4,14 @@
 
 ## 第一次安装（Ubuntu 22.04 / GNOME）
 
+首次只需运行一条安装脚本命令。脚本会安装 Qt 依赖并创建应用菜单图标；以后无需终端。
+
 本机已经有原版 Bridge 的 `~/.config/codex-local-bridge/config.json`、本地 `.venv` 和仓库代码。推荐在独立的 v0.5 开发检出目录试用，不覆盖正在运行的旧版服务。
 
 ```bash
 cd ~/codex-local-bridge-v04-beta
 git pull --ff-only
-.venv/bin/python -m pip install -e '.[desktop]'
-python3 scripts/studio_desktop.py install
+bash scripts/install_native.sh
 ```
 
 安装后按 Ubuntu Super 键搜索 **Bridge Studio**，点击图标进入原生窗口。可以固定在 Dock。之后使用不需要浏览器、无需每天输入终端命令；本机 UI 身份由当前 Ubuntu 登录用户确认，**没有重复输入 Studio Web 管理密钥**。

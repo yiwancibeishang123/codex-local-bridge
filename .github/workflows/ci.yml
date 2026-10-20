@@ -26,7 +26,7 @@ jobs:
       - name: Run credential-free regression tests
         run: python -m pytest -q
       - name: Check shell scripts
-        run: bash -n scripts/install.sh scripts/start.sh
+        run: bash -n scripts/install.sh scripts/start.sh scripts/install_native.sh
 
   native-qt-smoke:
     name: Native Qt desktop smoke (offscreen)
