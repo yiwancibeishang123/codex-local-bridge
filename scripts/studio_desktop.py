@@ -150,8 +150,10 @@ StartupNotify=true
         if self.manifest.exists():
             self.check_manifest()
             current = json.loads(self.manifest.read_text(encoding="utf-8"))
-            if current["root"] != str(self.root):
-                raise ValueError("已从其他目录安装；请先从原目录卸载")
+            if (current["root"] != str(self.root) or
+                    current.get("config_path", str(self.bridge_config.resolve())) !=
+                    str(self.bridge_config.resolve())):
+                raise ValueError("桌面版已使用其他源码/配置路径安装；请先从原目录卸载")
         if dry_run:
             print("将安装桌面图标、启动器、用户服务（不需要 sudo）：")
             for p in (*assets, self.manifest):
@@ -160,7 +162,8 @@ StartupNotify=true
         for p, (content, mode) in assets.items():
             safe_write(p, content, mode)
         safe_write(self.manifest, json.dumps({
-            "managed_by": MARKER, "root": str(self.root), "schema": 1,
+            "managed_by": MARKER, "root": str(self.root),
+            "config_path": str(self.bridge_config.resolve()), "schema": 1,
         }, ensure_ascii=False), 0o600)
         print("✓ 已创建 Ubuntu 应用菜单入口和图标")
         if not (state / "studio-ui.key").exists():
@@ -188,6 +191,18 @@ StartupNotify=true
             raise PermissionError("桌面安装记录不可信")
         return data
 
+    def as_installed(self):
+        """Reconstruct both code and Bridge config paths without inherited shell env."""
+        data = self.check_manifest()
+        root = data.get("root")
+        config = data.get("config_path") or str(self.bridge_config)
+        if not isinstance(root, str) or not Path(root).is_absolute():
+            raise PermissionError("桌面程序路径不可信")
+        if not isinstance(config, str) or not Path(config).is_absolute():
+            raise PermissionError("Bridge 配置路径不可信")
+        env = dict(self.env, BRIDGE_CONFIG=config)
+        return Desktop(root=root, home=self.home, env=env)
+
     @staticmethod
     def listening():
         try:
@@ -210,9 +225,9 @@ StartupNotify=true
                     BRIDGE_STUDIO_DESKTOP="1", PORT=str(PORT))
 
     def open(self):
-        installed = self.check_manifest()
-        if installed["root"] != str(self.root):
-            return Desktop(root=installed["root"], home=self.home, env=self.env).open()
+        installed = self.as_installed()
+        if installed.root != self.root or installed.bridge_config != self.bridge_config:
+            return installed.open()
         state = self.state()
         if not self.ready():
             if self.listening():
@@ -329,13 +344,13 @@ def main(argv=None):
     if args.action == "install":
         app.install(not args.no_autostart, not args.no_launch, args.dry_run)
     elif args.action == "open":
-        app.open()
+        app.as_installed().open()
     elif args.action == "key":
-        app.show_key()
+        app.as_installed().show_key()
     elif args.action == "doctor":
-        app.doctor()
+        app.as_installed().doctor()
     else:
-        app.uninstall(args.dry_run)
+        app.as_installed().uninstall(args.dry_run)
 
 
 if __name__ == "__main__":

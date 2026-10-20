@@ -68,6 +68,29 @@ class DesktopTests(unittest.TestCase):
         self.install(launch=False)  # re-install is idempotent
         self.assertTrue(self.bridge_config.exists())
 
+    def test_app_icon_restores_config_path_after_new_login(self):
+        custom = self.home / ".config/custom-bridge/private.json"
+        custom.parent.mkdir(parents=True)
+        self.bridge_config.rename(custom)
+        self.app.bridge_config = custom
+        self.app.env["BRIDGE_CONFIG"] = str(custom)
+        self.install(launch=False)
+        fresh = desktop.Desktop(root=self.root, home=self.home, env={
+            "XDG_CONFIG_HOME": str(self.home / ".config"),
+            "XDG_DATA_HOME": str(self.home / ".local/share"),
+        })
+        self.assertNotEqual(fresh.bridge_config, self.bridge_config)
+        restored = fresh.as_installed()
+        self.assertEqual(restored.root, self.root)
+        self.assertEqual(restored.bridge_config, self.bridge_config.resolve())
+        self.assertEqual(restored.state(), self.state)
+        with patch.object(restored, "ready", return_value=True), \
+             patch.object(restored, "systemctl", side_effect=AssertionError("not needed")), \
+             patch.object(desktop.shutil, "which", return_value="/usr/bin/xdg-open"), \
+             patch.object(desktop.subprocess, "Popen") as popen:
+            restored.open()
+        self.assertEqual(popen.call_args.args[0], ["/usr/bin/xdg-open", desktop.URL])
+
     def test_dry_run_has_no_files_or_service_side_effects(self):
         with patch.object(self.app, "systemctl", side_effect=AssertionError), \
              patch.object(self.app, "show_key", side_effect=AssertionError):
