@@ -54,3 +54,4 @@ bash scripts/install_native.sh
 - 项目级权限选择与自动记忆会改变运行行为；应在隔离项目和配置备份上进行验收，确认后再正式部署。
 
 见开发分支的 CI 与测试用例：`tests/test_project_modes.py`、`tests/test_auto_memory.py`、`tests/test_native_qt.py`。
+\n## 安全升级与恢复\n\n新增桌面「升级与恢复」标签；参见 [备份、升级、回退](V05_UPGRADE_RECOVERY.md)。\n

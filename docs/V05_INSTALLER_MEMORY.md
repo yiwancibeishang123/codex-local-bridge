@@ -4,7 +4,7 @@
 
 ## 1. 下载并安装 .deb
 
-打开 [Build Ubuntu Desktop Package](https://github.com/yiwancibeishang123/codex-local-bridge/actions/workflows/deb.yml)，选择最近一次成功构建，下载名为 BridgeStudio-Ubuntu22.04-amd64-deb 的附件，解压获得 bridge-studio-native_0.5.0~alpha2_amd64.deb。
+打开 [Build Ubuntu Desktop Package](https://github.com/yiwancibeishang123/codex-local-bridge/actions/workflows/deb.yml)，选择最近一次成功构建，下载名为 BridgeStudio-Ubuntu22.04-amd64-deb 的附件，解压获得 bridge-studio-native_0.5.0~alpha3_amd64.deb。
 
 用 Ubuntu 软件安装器打开文件，点击安装；以后按 Super 键搜索 Bridge Studio，点击图标。安装包是纯桌面前端，文件位于 /opt/bridge-studio/，不会自动替换正在运行的 Codex Bridge，也不会更改 OAuth、用户权限和 SQLite 记忆。
 
@@ -36,3 +36,4 @@ Build Ubuntu Desktop Package GitHub Actions 工作流会用 PyInstaller 打包 P
 这个打包文件不含后安装脚本，不自动删除用户数据或变更服务。源码编译与 GitHub CI 通过不等于在你的 Ubuntu GNOME 上完成双击安装、窗口交互和权限切换的实机验收。
 
 开发文件：scripts/build_deb.py、bridge/project_sandbox.py、bridge/codex_memory_stdio.py；测试：tests/test_deb_packaging.py、tests/test_project_sandbox.py、tests/test_codex_memory_stdio.py。
+\n## 5. 安全升级与恢复（新增）\n\n原生 Qt 窗口增加「升级与恢复」页面：检查受管理的 Bridge 服务、创建并核验私有 SQLite 在线备份、选取已准备的受信任后端检出进行本机受控升级，以及故障快照恢复。桌面 UI 的 .deb 与 OAuth MCP 后端分开更新。参见 [完整升级步骤与边界](V05_UPGRADE_RECOVERY.md)。\n

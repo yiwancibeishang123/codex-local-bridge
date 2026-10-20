@@ -49,6 +49,7 @@ def main():
     from bridge.handoff import build_task_receipt, build_project_handoff
     from bridge.security import checked
     from bridge.filetools import _check_path, _read_at
+    from scripts.studio_upgrade_panel import UpgradePanel
 
     app = QApplication(sys.argv)
     app.setApplicationName("Bridge Studio")
@@ -164,7 +165,8 @@ def main():
             nav.addWidget(subtitle)
             nav.addSpacing(36)
             pages = ["⌂   工作台总览", "▤   项目与权限", "▶   Codex 任务",
-                     "✦   长期共享记忆", "◎   文件浏览", "◉   连接与诊断"]
+                     "✦   长期共享记忆", "◎   文件浏览", "◉   连接与诊断",
+                     "↻   升级与恢复"]
             for index, title in enumerate(pages):
                 button = QPushButton(title)
                 button.setObjectName("nav")
@@ -302,6 +304,10 @@ def main():
             self.health.setReadOnly(True)
             p.addWidget(self.health, 1)
             p.addWidget(self.btn("重新检测连接", self.refresh_health, True))
+
+            p = self.panel("升级与恢复", "图形化管理后端升级、数据一致性备份与故障回退。")
+            self.upgrade_panel = UpgradePanel(self.studio.config_path, self)
+            p.addWidget(self.upgrade_panel, 1)
             self.go(0)
 
         def go(self, i):

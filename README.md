@@ -7,7 +7,7 @@
 **在 ChatGPT 网页端规划，在自己的 Ubuntu 上让 Codex 修改、测试并交付代码。**
 
 [![Tests](https://github.com/yiwancibeishang123/codex-local-bridge/actions/workflows/ci.yml/badge.svg?branch=feat%2Fbridge-studio-v0.4)](docs/VALIDATION.md)
-[![Version](https://img.shields.io/badge/version-0.5.0a1-5366d5)](https://github.com/yiwancibeishang123/codex-local-bridge/releases)
+[![Version](https://img.shields.io/badge/version-0.5.0a3-5366d5)](https://github.com/yiwancibeishang123/codex-local-bridge/releases)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776ab)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -17,7 +17,7 @@
 
 ---
 
-> **可安装 .deb + 项目级 systemd 写入白名单 + 独立 Codex MCP 记忆接口**：新版提供 Ubuntu amd64 安装包 CI，支持像普通软件一样在 Ubuntu 软件安装器双击安装；普通 VS Code Codex 可选择注册本地记忆服务。详见 [安装与共享记忆指南](docs/V05_INSTALLER_MEMORY.md) 与 [构建工作流](https://github.com/yiwancibeishang123/codex-local-bridge/actions/workflows/deb.yml)。注意：原 MCP 后端仍需单独部署。
+> **v0.5 Alpha.3：图形化升级与回滚**：Qt 桌面新增「升级与恢复」，可直接创建 SQLite 一致性备份、验证 SHA256、选择受信任的本地候选后端升级并验证连接；失败自动尝试回滚。桌面 .deb 更新可由界面交给 Ubuntu 软件安装器。详见 [图形升级与恢复指南](docs/V05_UPGRADE_RECOVERY.md)。升级 MCP 后端仍须本机确认，绝不自动更新原 `main` 稳定版。\n\n> **可安装 .deb + 项目级 systemd 写入白名单 + 独立 Codex MCP 记忆接口**：新版提供 Ubuntu amd64 安装包 CI，支持像普通软件一样在 Ubuntu 软件安装器双击安装；普通 VS Code Codex 可选择注册本地记忆服务。详见 [安装与共享记忆指南](docs/V05_INSTALLER_MEMORY.md) 与 [构建工作流](https://github.com/yiwancibeishang123/codex-local-bridge/actions/workflows/deb.yml)。注意：原 MCP 后端仍需单独部署。
 
 > **v0.5 Native Alpha（开发中）**：全新 PySide6 原生窗口，不再依赖浏览器使用 Studio；同一个工作台中可查看项目、选择关闭/只读/读写权限，提交 Codex 任务，浏览文件及管理项目级 SQLite 长期记忆。首次在项目目录运行：`bash scripts/install_native.sh`，之后从 Ubuntu 应用菜单点击即可。**只在开发分支，尚未升级正在运行的 MCP**。详见 [原生桌面版](docs/V05_NATIVE_ALPHA.md)。
 
