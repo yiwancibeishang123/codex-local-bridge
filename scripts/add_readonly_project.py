@@ -89,7 +89,7 @@ def allowed_context(root, name):
     return p.as_posix()
 
 
-def main():
+def main(argv=None, *, config_file=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("project_id", help="Short stable id (letters, digits, underscore, dash)")
     parser.add_argument("folder", help="Existing local Ubuntu project directory")
@@ -98,7 +98,7 @@ def main():
     parser.add_argument("--name", help="Optional display name")
     parser.add_argument("--dry-run", action="store_true", help="Preview without writing or restarting")
     parser.add_argument("--yes", action="store_true", help="Explicitly approve the local read-only registration")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", args.project_id):
         error("project_id must be 1-64 ASCII letters/digits/underscore/dash, start with a letter")
@@ -109,7 +109,7 @@ def main():
     if not root.is_dir():
         error(f"Not a directory: {root}")
     home = Path.home().resolve()
-    config_path = Path(os.environ.get(
+    config_path = Path(config_file or os.environ.get(
         "BRIDGE_CONFIG", home/".config/codex-local-bridge/config.json")).expanduser()
     if not config_path.is_file() or config_path.is_symlink():
         error("Bridge config not found or is a symlink")

@@ -15,11 +15,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from bridge.project_modes import ProjectModes, project_mode
 from bridge.memory import MemoryStore
+from bridge.desktop_profile import config_location, remember_config
 
 
 def config_path():
-    return Path(os.environ.get("BRIDGE_CONFIG") or
-                Path.home() / ".config/codex-local-bridge/config.json")
+    return config_location()
 
 
 def status_color(value):
@@ -50,12 +50,32 @@ def main():
     from bridge.security import checked
     from bridge.filetools import _check_path, _read_at
     from scripts.studio_upgrade_panel import UpgradePanel
+    from scripts.studio_connection_panel import ConnectionPanel
 
     app = QApplication(sys.argv)
     app.setApplicationName("Bridge Studio")
     app.setOrganizationName("Codex Local Bridge")
     app.setStyle("Fusion")
     app.setFont(QFont("Noto Sans CJK SC", 10))
+    # First-run selection for an already deployed Bridge with a nondefault config.
+    if not config_path().is_file():
+        QMessageBox.information(
+            None, "Bridge Studio 首次使用",
+            "未找到已经配置的 Codex Local Bridge。\\n"
+            "如果你之前部署过 Bridge，请选择该服务的 config.json。\\n"
+            "此操作不会重置 Codex 登录、授权或数据库。"
+        )
+        selected, _ = QFileDialog.getOpenFileName(
+            None, "选择已有的 Bridge config.json",
+            str(Path.home()), "Bridge config (config.json *.json)"
+        )
+        if not selected:
+            return 0
+        try:
+            remember_config(selected)
+        except Exception as exc:
+            QMessageBox.warning(None, "Bridge Studio", "配置文件未通过安全检查：" + str(exc))
+            return 1
     root = Path(__file__).resolve().parents[1]
     icon = root / "docs/assets/bridge-studio-icon.svg"
     if icon.is_file():
@@ -102,6 +122,7 @@ def main():
             self.navs = []
             self.current_project = ""
             self.note_ids = []
+            self.memory_switch_worker = None
             self.build()
             self.reload()
             self.timer = QTimer(self)
@@ -254,6 +275,7 @@ def main():
             row = QHBoxLayout()
             self.memory_project = QComboBox()
             self.memory_project.currentIndexChanged.connect(self.refresh_memory)
+            self.memory_project.currentIndexChanged.connect(self.refresh_memory_setting)
             self.memory_search = QLineEdit()
             self.memory_search.setPlaceholderText("搜索决策、问题、实验结论……")
             self.memory_search.returnPressed.connect(self.refresh_memory)
@@ -261,6 +283,12 @@ def main():
             row.addWidget(self.memory_search, 2)
             row.addWidget(self.btn("搜索", self.refresh_memory, True))
             p.addLayout(row)
+            self.auto_memory_switch = QCheckBox("自动保存本项目 Bridge 任务结果，并在后续任务中读取共享记忆")
+            self.auto_memory_switch.toggled.connect(self.change_auto_memory_setting)
+            p.addWidget(self.auto_memory_switch)
+            note = QLabel("该开关仅作用于 Bridge 管理的任务；独立 VS Code Codex 需启用并调用记忆 MCP。")
+            note.setObjectName("muted")
+            p.addWidget(note)
             split = QHBoxLayout()
             self.memory_list = QListWidget()
             self.memory_list.currentRowChanged.connect(self.view_note)
@@ -299,11 +327,14 @@ def main():
             box.addWidget(self.file_preview, 4)
             p.addLayout(box, 1)
 
-            p = self.panel("连接与诊断", "真实检查本机 MCP 与 Tailscale 状态，无法确认的状态标记为未知。")
-            self.health = QTextEdit()
-            self.health.setReadOnly(True)
-            p.addWidget(self.health, 1)
-            p.addWidget(self.btn("重新检测连接", self.refresh_health, True))
+            p = self.panel("连接与诊断", "逐项检查本机运行状况，并给出可操作的修复建议。")
+            self.connection_panel = ConnectionPanel(
+                self.studio.config_path,
+                on_codex_connect=self.connect_local_codex,
+                parent=self,
+            )
+            self.connection_panel.status_changed.connect(self.on_connection_status)
+            p.addWidget(self.connection_panel, 1)
 
             p = self.panel("升级与恢复", "图形化管理后端升级、数据一致性备份与故障回退。")
             self.upgrade_panel = UpgradePanel(self.studio.config_path, self)
@@ -349,6 +380,7 @@ def main():
                 self.kpi[0].setText(str(sum(x.get("enabled") is not False for x in entries)))
                 self.refresh_tasks()
                 self.refresh_memory()
+                self.refresh_memory_setting()
                 self.refresh_files()
                 self.refresh_health()
             except Exception as exc:
@@ -425,15 +457,30 @@ def main():
                  ) != QMessageBox.Yes:
                 return
             try:
-                helper = self.studio.config_path.parent
-                # Reuse the existing hardened local register helper, no shell.
-                command = [sys.executable, str(root / "scripts/add_readonly_project.py"),
-                           name, folder, "--yes"]
-                result = subprocess.run(command, env=dict(os.environ, BRIDGE_CONFIG=str(self.studio.config_path)),
-                                        text=True, capture_output=True, timeout=45, check=False)
-                if result.returncode:
-                    raise RuntimeError(result.stderr.strip() or "项目注册失败")
-                self.reload()
+                from scripts.add_readonly_project import main as register_local
+                from scripts.studio_upgrade_panel import Operation
+                from contextlib import redirect_stdout
+                import io
+                if getattr(self, "registration_worker", None) is not None:
+                    return self.alert("当前还有一个项目正在注册。")
+                def register():
+                    # Import inside bundled PyInstaller app, no separate Python
+                    # script path required. The safe helper performs a backup
+                    # and a verified service restart before returning.
+                    out = io.StringIO()
+                    with redirect_stdout(out):
+                        register_local([name, folder, "--yes"], config_file=self.studio.config_path)
+                    return {"id": name, "summary": out.getvalue()[-900:]}
+                self.registration_worker = Operation(register, self)
+                self.registration_worker.success.connect(
+                    lambda _result: self.reload())
+                self.registration_worker.failure.connect(
+                    lambda message: self.alert(message, True))
+                def clean():
+                    self.registration_worker.deleteLater()
+                    self.registration_worker = None
+                self.registration_worker.finished.connect(clean)
+                self.registration_worker.start()
             except Exception as exc:
                 self.alert(exc, True)
 
@@ -497,6 +544,72 @@ def main():
                 self.task_detail.setPlainText(json.dumps(data, ensure_ascii=False, indent=2))
             except Exception as exc:
                 self.task_detail.setPlainText("读取任务详情失败：" + str(exc))
+
+        def refresh_memory_setting(self):
+            from bridge.memory_preferences import AutoMemoryPreferences
+            pid = self.active_id(self.memory_project)
+            self.auto_memory_switch.blockSignals(True)
+            try:
+                if not pid:
+                    self.auto_memory_switch.setEnabled(False)
+                    self.auto_memory_switch.setChecked(False)
+                    return
+                self.auto_memory_switch.setChecked(
+                    AutoMemoryPreferences(self.studio.config_path).read(pid))
+                self.auto_memory_switch.setEnabled(True)
+            except Exception:
+                self.auto_memory_switch.setEnabled(False)
+            finally:
+                self.auto_memory_switch.blockSignals(False)
+
+        def change_auto_memory_setting(self, enabled):
+            from bridge.memory_preferences import AutoMemoryPreferences
+            from scripts.studio_upgrade_panel import Operation
+            pid = self.active_id(self.memory_project)
+            if not pid:
+                return
+            if self.memory_switch_worker is not None:
+                self.refresh_memory_setting()
+                return
+            # Preferences restart the service; do not interrupt active Codex tasks.
+            try:
+                from bridge.core import Bridge, TERMINAL
+                pending = [t for t in Bridge(self.studio.config()).store.all("task")
+                           if t.get("state") not in TERMINAL]
+                if pending:
+                    raise RuntimeError("当前还有未结束的 Codex 任务，拒绝重启 Bridge。")
+            except Exception as exc:
+                self.alert(exc, True)
+                self.refresh_memory_setting()
+                return
+            word = "启用" if enabled else "关闭"
+            if QMessageBox.question(
+                self, "确认自动记忆偏好",
+                word + "项目 " + pid + " 的 Bridge 自动任务记忆？\\n"
+                "该操作将更新本机私有配置并重启 Bridge 用户服务。"
+                "已经存在的历史记忆不会被删除。"
+            ) != QMessageBox.Yes:
+                self.refresh_memory_setting()
+                return
+            try:
+                job = Operation(
+                    lambda: AutoMemoryPreferences(self.studio.config_path).set(
+                        pid, bool(enabled), confirmed=True), self)
+                self.memory_switch_worker = job
+                self.auto_memory_switch.setEnabled(False)
+                job.success.connect(
+                    lambda result: self.alert("自动记忆设置已更新：" +
+                                              ("启用" if result["enabled"] else "关闭")))
+                job.error.connect(lambda error: self.alert(error, True))
+                def done():
+                    self.memory_switch_worker = None
+                    job.deleteLater()
+                    self.refresh_memory_setting()
+                job.finished.connect(done)
+                job.start()
+            except Exception as exc:
+                self.alert(exc, True)
+                self.refresh_memory_setting()
 
         def refresh_memory(self):
             pid = self.active_id(self.memory_project)
@@ -684,22 +797,19 @@ def main():
             except Exception as exc:
                 self.file_preview.setPlainText("无法读取：" + str(exc))
 
+        def on_connection_status(self, report):
+            checks = report.get("checks", {})
+            status = checks.get("local_mcp", {}).get("status")
+            self.kpi[3].setText(
+                "在线" if status == "ready"
+                else "离线" if status == "attention" else "未验证"
+            )
+
         def refresh_health(self):
-            import socket
-            result = {}
-            for port, name in ((8767,"MCP"), (8768,"旧版 Studio Web")):
-                try:
-                    with socket.create_connection(("127.0.0.1", port), timeout=.2):
-                        result[name] = "本地监听正常"
-                except OSError:
-                    result[name] = "未监听/未知"
-            result["管理窗口"] = "Qt 原生窗口 · Ubuntu 当前登录用户"
-            result["GitHub 同步"] = "按需执行 Git；项目记忆不上传云端"
-            result["数据库"] = str(self.studio.memory.path)
-            result["桥接服务"] = str(self.studio.config_path)
-            result["记忆机制"] = "Bridge 任务自动保存状态 + 委派前项目检索"
-            self.health.setPlainText(json.dumps(result, ensure_ascii=False, indent=2))
-            self.kpi[3].setText("在线" if result["MCP"] == "本地监听正常" else "未知")
+            # Refreshes are scheduled by ConnectionPanel every 60 seconds;
+            # a fast 8-second poll must not spawn repeated Codex/TS processes.
+            if self.connection_panel.last_report:
+                self.on_connection_status(self.connection_panel.last_report)
 
         def poll(self):
             if self.tabs.currentIndex() in (0, 2):
