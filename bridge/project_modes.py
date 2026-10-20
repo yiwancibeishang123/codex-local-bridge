@@ -47,11 +47,16 @@ def private_replace(path, data):
 
 
 class ProjectModes:
-    def __init__(self, config_path, restart=None):
+    def __init__(self, config_path, restart=None, sandbox=None):
         self.path = Path(config_path).expanduser().absolute()
         self.restart = restart or self._restart
+        # An injected restart is used by isolated unit tests, never the real host.
+        from .project_sandbox import SystemdProjectSandbox
+        self.sandbox = sandbox if sandbox is not None else (SystemdProjectSandbox() if restart is None else None)
 
     def _restart(self):
+        if self.sandbox is not None:
+            self.sandbox.reload()
         for argv in (["systemctl", "--user", "restart", SERVICE],
                      ["systemctl", "--user", "is-active", "--quiet", SERVICE]):
             subprocess.run(argv, check=True, timeout=25)
@@ -110,33 +115,46 @@ class ProjectModes:
                 out.write(raw)
                 out.flush()
                 os.fsync(out.fileno())
-            private_replace(self.path, changed)
+            # Managed, project-specific systemd ReadWritePaths allowlist.
+            # It must be updated atomically alongside config and rolled back on failure.
+            old_sandbox = self.sandbox.snapshot() if self.sandbox else None
             try:
+                if self.sandbox:
+                    self.sandbox.apply(data["projects"])
+                private_replace(self.path, changed)
                 self.restart()
             except Exception:
                 # Do not claim the change took effect if the old service remains running.
                 if self.path.read_bytes() == changed:
                     private_replace(self.path, raw)
+                if self.sandbox:
+                    self.sandbox.restore(old_sandbox)
                 try:
                     self.restart()
                 except Exception:
                     pass
                 raise
-            # Write scope elevation is a separate local-only grant, not remote MCP.
-            if mode == "write":
+            # Existing grants MUST be revoked immediately on demotion/off;
+            # otherwise re-enabling with the same scope could resurrect access.
+            from .core import Bridge
+            try:
+                if mode != "write":
+                    # The new effective settings disable this project; construct
+                    # against the previous config so revocation can still locate it.
+                    Bridge(json.loads(raw)).authorization.revoke(project_id)
+                else:
+                    Bridge(data).authorization.grant(project_id)
+            except Exception:
+                # Never retain a silently elevated config after a grant error.
+                if self.path.read_bytes() == changed:
+                    private_replace(self.path, raw)
+                if self.sandbox:
+                    self.sandbox.restore(old_sandbox)
                 try:
-                    from .core import Bridge
-                    bridge = Bridge(data)
-                    bridge.authorization.grant(project_id)
-                except Exception:
-                    # Revert to read-only if local grant could not be established.
-                    found["enabled"] = True
-                    found["allowed_modes"] = ["read"]
-                    found["file_write_enabled"] = False
-                    found["project_authorization"] = False
-                    private_replace(self.path, (json.dumps(data, ensure_ascii=False, indent=2)+"\n").encode())
                     self.restart()
-                    raise
+                except Exception:
+                    pass
+                raise
             return {"project_id": project_id, "mode": mode, "previous": old,
                     "changed": True, "backup": str(backup)}
         finally:

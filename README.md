@@ -17,6 +17,8 @@
 
 ---
 
+> **可安装 .deb + 项目级 systemd 写入白名单 + 独立 Codex MCP 记忆接口**：新版提供 Ubuntu amd64 安装包 CI，支持像普通软件一样在 Ubuntu 软件安装器双击安装；普通 VS Code Codex 可选择注册本地记忆服务。详见 [安装与共享记忆指南](docs/V05_INSTALLER_MEMORY.md) 与 [构建工作流](https://github.com/yiwancibeishang123/codex-local-bridge/actions/workflows/deb.yml)。注意：原 MCP 后端仍需单独部署。
+
 > **v0.5 Native Alpha（开发中）**：全新 PySide6 原生窗口，不再依赖浏览器使用 Studio；同一个工作台中可查看项目、选择关闭/只读/读写权限，提交 Codex 任务，浏览文件及管理项目级 SQLite 长期记忆。首次在项目目录运行：`bash scripts/install_native.sh`，之后从 Ubuntu 应用菜单点击即可。**只在开发分支，尚未升级正在运行的 MCP**。详见 [原生桌面版](docs/V05_NATIVE_ALPHA.md)。
 
 > **新版：Ubuntu 桌面一键启动**：首次执行一次 `python3 scripts/studio_desktop.py install`，以后从 Ubuntu 应用菜单点击 **Bridge Studio** 即可启动本地控制台并打开浏览器。可固定在 Dock，自动检测/启动服务，不需要每天输入一堆命令。[桌面安装说明](docs/V04_ONE_CLICK_DESKTOP.md)。
