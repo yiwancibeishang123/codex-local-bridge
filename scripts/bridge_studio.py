@@ -159,6 +159,72 @@ class Studio:
         except (OSError, sqlite3.Error, ValueError, AttributeError):
             return {'items': [], 'available': False}
 
+    def task_detail(self, task_id):
+        """Read-only verified task metadata, not raw prompts, diffs or credentials."""
+        if not isinstance(task_id, str) or not re.fullmatch(r'[a-f0-9]{32}', task_id):
+            raise ValueError('Invalid task ID')
+        path = self.state / 'bridge.sqlite3'
+        if not path.is_file() or path.is_symlink():
+            raise Problem(503, '任务数据库不可用。')
+        try:
+            with sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=2) as db:
+                db.execute('PRAGMA query_only=ON')
+                row = db.execute("SELECT data FROM records WHERE kind='task' AND id=?", (task_id,)).fetchone()
+                if row is None:
+                    raise Problem(404, '任务记录不存在。')
+                record = json.loads(row[0])
+                result = db.execute("SELECT data FROM records WHERE kind='result' AND id=?", (task_id,)).fetchone()
+                details = json.loads(result[0]) if result else {}
+        except (sqlite3.Error, OSError, json.JSONDecodeError):
+            raise Problem(503, '读取任务记录失败。') from None
+        if not isinstance(record, dict) or record.get('id') != task_id:
+            raise Problem(503, '任务记录不一致。')
+        project_id = record.get('project_id')
+        if not isinstance(project_id, str) or not IDENTIFIER.fullmatch(project_id):
+            raise Problem(503, '项目标识无效。')
+        if not self.project(project_id):
+            raise Problem(404, '项目已从本机授权列表移除。')
+        states = {'queued', 'running', 'awaiting_approval', 'succeeded',
+                  'failed', 'cancelled', 'interrupted'}
+        modes = {'read', 'write_test'}
+        def valid_choice(value, options):
+            return value if type(value) is str and value in options else 'unknown'
+        def valid_flag(value):
+            return value if type(value) is bool else None
+        parent = record.get('parent_id')
+        safe = {'id':task_id, 'project_id':project_id,
+                'state':valid_choice(record.get('state'), states),
+                'mode':valid_choice(record.get('mode'), modes),
+                'execution_succeeded':valid_flag(record.get('execution_succeeded')),
+                'tests_passed':valid_flag(record.get('tests_passed')),
+                'changes_applied':valid_flag(record.get('changes_applied')),
+                'source_commit_created':valid_flag(record.get('source_commit_created')),
+                'parent_id':parent if type(parent) is str and re.fullmatch(r'[a-f0-9]{32}',parent) else None}
+        tests = details.get('tests', []) if isinstance(details, dict) else []
+        edits = details.get('edits', []) if isinstance(details, dict) else []
+        safe['tests'] = []
+        if isinstance(tests, list):
+            for item in tests[:30]:
+                if isinstance(item, dict):
+                    code = item.get('exit_code')
+                    code = code if type(code) is int else None
+                    safe['tests'].append({'exit_code':code,
+                        'passed':code == 0 if code is not None else None,
+                        'sandboxed':item.get('sandbox') == 'bubblewrap; network disabled; project read-only'})
+        safe['files'] = []
+        if isinstance(edits, list):
+            for entry in edits[:30]:
+                path = entry.get('path') if isinstance(entry, dict) else None
+                if (type(path) is not str or len(path) > 256 or
+                    not re.fullmatch(r'[A-Za-z0-9_./ -]+', path) or path.startswith('/') or
+                    any(part.startswith('.') for part in path.split('/')) or
+                    any(token in path.lower() for token in
+                        ('auth', 'secret', 'credential', 'token', 'password'))):
+                    continue
+                safe['files'].append(path)
+        safe['file_count'] = len(edits) if isinstance(edits, list) else 0
+        return safe
+
     def connections(self):
         try:
             with socket.create_connection(('127.0.0.1', 8767), timeout=0.5):
@@ -353,6 +419,8 @@ class Handler(BaseHTTPRequestHandler):
                               'metadata': {'version': '0.4', 'listen': '127.0.0.1', 'port': self.server.server_port,
                                            'memory_database': 'studio.sqlite3', 'task_database': 'bridge.sqlite3（只读）',
                                            'session_minutes': TTL // 60, 'registration': '本机管理员确认后可直接注册只读项目'}}
+                elif route.path == '/api/task':
+                    result = app.task_detail(get('id'))
                 elif route.path == '/api/notes':
                     pid = get('project_id')
                     kwargs = {'include_archived': get('archived') == '1', 'limit': 100}
@@ -410,6 +478,7 @@ HTML = r'''<!doctype html>
 </style></head><body>
 <section id="login" class="card login"><div class="brand"><span class="mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h11a4 4 0 010 8H4m0-8v12m0-8h12M9 3v18"/></svg></span>Bridge Studio</div><h1>你的本地工作室</h1><p>连接项目、任务与共享记忆。请输入此设备的独立管理密钥。</p><form id="login-form"><label for="admin">管理密钥</label><input id="admin" type="__SECRET_TYPE__" autocomplete="off" required maxlength="256"><p><small>首次启动显示在终端；可运行 <code>python3 scripts/bridge_studio.py --show-key</code> 再次查看。</small></p><button class="primary" type="submit">进入工作室</button></form><div id="login-status" role="status"></div></section>
 <div id="app" class="shell" hidden><aside><div class="brand"><span class="mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h11a4 4 0 010 8H4m0-8v12m0-8h12M9 3v18"/></svg></span>Bridge</div><div class="caption">LOCAL STUDIO / 0.4</div><nav aria-label="主导航"></nav><footer>本机私有工作空间<br>127.0.0.1 · 独立管理会话<br>OAuth MCP 保持独立</footer></aside><main><header class="top"><div><div class="eyebrow">YOUR LOCAL WORKSPACE</div><h1 id="title">总览</h1><span class="muted" id="subtitle">项目与知识，在这里汇合。</span></div><div class="row"><button id="refresh">刷新状态</button><button id="logout">退出</button></div></header><div id="notice" role="status" aria-live="polite"></div><section id="view" aria-label="工作区"></section></main></div>
+<dialog id="task-detail"><h2>任务执行详情</h2><div id="task-info" class="stack"></div><div class="actions"><button id="close-task" type="button">关闭</button></div></dialog>
 <dialog id="editor"><form id="note-form"><h2 id="editor-title">新建记忆</h2><p class="muted">记忆来源固定为 studio；请勿填写密码或凭据。</p><label for="note-title">标题</label><input id="note-title" maxlength="300" required><label for="note-kind">类型</label><select id="note-kind"><option value="knowledge">知识</option><option value="decision">决策</option><option value="project">项目</option><option value="task">任务</option></select><label for="note-tags">标签（逗号分隔）</label><input id="note-tags"><label for="note-body">正文</label><textarea id="note-body" maxlength="12000"></textarea><div id="editor-status" role="status"></div><div class="actions"><button class="primary" type="submit">保存记忆</button><button id="close-editor" type="button">取消</button></div></form></dialog>
 <script>
 'use strict';
@@ -428,7 +497,28 @@ function empty(parent,label){add(parent,'div','empty',label)}
 function card(parent,title){const c=add(parent,'article','card');add(c,'h2','',title);return c}
 function badge(parent,label,good=false){add(parent,'span','pill'+(good?' good':''),label)}
 function metric(parent,label,value,detail,percent){const c=card(parent,label);add(c,'div','value',value);add(c,'small','',detail);const bar=add(c,'div','bar');const fill=add(bar,'span');fill.style.width=Math.max(0,Math.min(100,percent))+'%'}
-function taskTable(parent,items){if(!items.length)return empty(parent,data.tasks.available?'暂无任务记录。':'任务数据库尚不可用。');const wrap=add(parent,'div','table-wrap'),t=add(wrap,'table'),head=add(t,'thead'),row=add(head,'tr');['任务 / 项目','状态','测试','写回'].forEach(x=>add(row,'th','',x));const body=add(t,'tbody');items.forEach(x=>{const r=add(body,'tr');const a=add(r,'td');add(a,'div','path',String(x.id||'').slice(0,14));add(a,'small','',x.project_id||'—');add(r,'td','',x.state||'未知');add(r,'td','',x.tests_passed===true?'通过':x.tests_passed===false?'失败':'未执行 / 未知');add(r,'td','',x.changes_applied===true?'已写回':'未写回')})}
+function taskTable(parent,items){if(!items.length)return empty(parent,data.tasks.available?'暂无任务记录。':'任务数据库尚不可用。');const wrap=add(parent,'div','table-wrap'),t=add(wrap,'table'),head=add(t,'thead'),row=add(head,'tr');['任务 / 项目','状态','测试','写回'].forEach(x=>add(row,'th','',x));const body=add(t,'tbody');items.forEach(x=>{const r=add(body,'tr');const a=add(r,'td');button(a,String(x.id||'').slice(0,14),()=>showTask(x.id));add(a,'small','',x.project_id||'—');add(r,'td','',x.state||'未知');add(r,'td','',x.tests_passed===true?'通过':x.tests_passed===false?'失败':'未执行 / 未知');add(r,'td','',x.changes_applied===true?'已写回':'未写回')})}
+async function showTask(id){
+ const info=$('task-info');info.replaceChildren();add(info,'p','muted','正在读取任务记录…');
+ $('task-detail').showModal();
+ try{
+  const t=await api('/api/task?id='+encodeURIComponent(id));info.replaceChildren();
+  const fields=[['任务 ID',t.id],['项目',t.project_id],['状态',t.state],
+   ['执行成功',t.execution_succeeded===true?'是':t.execution_succeeded===false?'否':'未知'],
+   ['测试通过',t.tests_passed===true?'是':t.tests_passed===false?'否':'未执行 / 未知'],
+   ['文件写回',t.changes_applied===true?'已写回':t.changes_applied===false?'未写回':'未知'],
+   ['源仓库提交',t.source_commit_created===true?'已提交':'未提交 / 未知'],
+   ['关联任务',t.parent_id||'无'],['变更文件数量',t.file_count]];
+  const dl=add(info,'dl','meta');fields.forEach(([k,v])=>{add(dl,'dt','',k);add(dl,'dd','',v??'未知')});
+  const results=card(info,'测试进程状态');
+  if(!t.tests?.length)empty(results,'无已记录测试。');
+  else t.tests.forEach((x,i)=>add(results,'p','', '测试 '+(i+1)+' · exit='+String(x.exit_code??'未知')+' · '+(x.passed===true?'通过':x.passed===false?'失败':'未知')));
+  const files=card(info,'变更文件（仅相对路径）');
+  if(!t.files?.length)empty(files,'未检测到符合展示要求的文件路径。');
+  else t.files.forEach(path=>add(files,'p','path',path));
+ }catch(e){message(info,e.message,true)}
+}
+$('close-task').onclick=()=>$('task-detail').close();
 async function render(){if(!data)return;$('title').textContent=names[page];[...nav.children].forEach((b,i)=>{b.classList.toggle('active',i===page);b.setAttribute('aria-current',i===page?'page':'false')});const v=$('view');v.replaceChildren();if(page===0){const h=add(v,'div','hero');add(h,'div','eyebrow','PRIVATE · CONNECTED · IN YOUR CONTROL');add(h,'h2','','让每一次本地协作清晰可见');add(h,'p','muted','查看真实状态、管理项目知识。自动写入权限始终由本机授权决定。');button(h,'打开共享记忆',()=>{page=2;render().catch(notify)},'primary');const k=add(v,'div','cards'),ts=data.tasks.items,done=ts.filter(t=>['succeeded','failed','cancelled','interrupted'].includes(t.state)),success=done.filter(t=>t.state==='succeeded').length,pct=done.length?Math.round(success/done.length*100):0;metric(k,'Bridge 本地端口',data.connections.bridge_tcp?'可达':'不可达','仅 TCP 探测 · 127.0.0.1:8767',data.connections.bridge_tcp?100:0);metric(k,'已注册项目',data.projects.length,'读取现有 Bridge 配置',100);metric(k,'任务成功率',done.length?pct+'%':'—','最近 50 条中的终态任务；不代表测试通过',pct);metric(k,'活跃共享记忆',Object.values(data.memory_counts).reduce((a,b)=>a+b,0),'独立 studio.sqlite3',100);const g=add(v,'div','grid'),recent=card(g,'最近任务');taskTable(recent,ts.slice(0,5));const c=card(g,'工作空间边界');add(c,'p','','Studio 与 OAuth MCP 使用独立端口和登录。');add(c,'p','muted','共享记忆按项目隔离；任务面板只显示状态。模型登录和远程 MCP 连通性尚未验证。');badge(c,'本地管理 · 独立会话',true)}
 else if(page===1){const g=add(v,'div','grid');if(!data.projects.length)empty(g,'尚未注册项目。');data.projects.forEach(p=>{const c=card(g,p.name);badge(c,p.access==='automatic_code_write'?'automatic_code_write · 自动普通代码写入':p.access==='read_only'?'read_only · 只读':'权限未知 · CLI 不可用',p.access==='automatic_code_write');add(c,'p','path',p.root);if(data.memory_errors?.[p.id])add(c,'p','error',data.memory_errors[p.id]);add(c,'small','','授权必须在可信本机终端执行并交互确认：');add(c,'pre','',p.grant_command);button(c,'撤销项目授权',async()=>{if(!confirm('撤销 '+p.id+' 的自动写入授权？此操作不回滚已有修改。'))return;try{await api('/api/projects/revoke',{project_id:p.id,confirm:'REVOKE '+p.id});await refresh()}catch(e){notify(e)}})});const c=card(v,'添加只读项目');c.style.marginTop='22px';add(c,'p','muted','先执行安全预检，再在本机管理台明确确认注册；系统会备份配置并重启 Bridge。不授予写入权限。');const f=add(c,'form'),id=field(f,'项目 ID','例如 my_project'),folder=field(f,'本机绝对目录','例如 /home/user/projects/example');const status=add(f,'div');const submit=add(f,'button','primary','确认并运行只读预检');submit.type='submit';f.onsubmit=async e=>{e.preventDefault();if(!confirm('以管理员身份预检 '+id.value+' 的只读注册？不会修改配置。'))return;submit.disabled=true;message(status,'正在提交预检…');try{const job=await api('/api/projects/preview',{project_id:id.value,folder:folder.value,confirm:'PREVIEW '+id.value});let value;do{await new Promise(r=>setTimeout(r,700));value=await api('/api/job?id='+encodeURIComponent(job.job_id));message(status,value.message,value.state==='failed')}while(value.state==='running');if(value.local_command){add(status,'pre','',value.local_command);button(status,'确认注册只读项目',async()=>{if(!confirm('确定将 '+folder.value+' 加入可读项目，并重启 Bridge 吗？'))return;submit.disabled=true;message(status,'正在注册并检查服务状态…');try{const reg=await api('/api/projects/register',{project_id:id.value,folder:folder.value,confirm:'REGISTER '+id.value});let done;do{await new Promise(r=>setTimeout(r,800));done=await api('/api/job?id='+encodeURIComponent(reg.job_id));message(status,done.message,done.state==='failed')}while(done.state==='running');if(done.state==='succeeded'){await refresh();page=1;await render()}}catch(err){message(status,err.message,true)}finally{submit.disabled=false}},'primary')}}catch(err){message(status,err.message,true)}finally{submit.disabled=false}}}
 else if(page===2){await memoryView(v)}

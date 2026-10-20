@@ -119,7 +119,7 @@ def test_stdio_sdk_discovery_and_harmless_call(config,tmp_path):
         async with stdio_client(StdioServerParameters(command=sys.executable,args=['-m','bridge.stdio'],env=env)) as (read,write):
             async with ClientSession(read,write) as session:
                 await session.initialize()
-                tools=await session.list_tools();assert len(tools.tools)==13
+                tools=await session.list_tools();assert len(tools.tools)==15
                 result=await session.call_tool('list_projects',{});assert not result.isError
                 assert 'demo' in result.content[0].text
     asyncio.run(run())
