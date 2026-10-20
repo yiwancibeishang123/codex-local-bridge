@@ -272,6 +272,7 @@ def main():
             tools.addWidget(self.btn("保存修改", self.save_note, True))
             tools.addWidget(self.btn("归档记忆", self.archive_note))
             tools.addWidget(self.btn("查看交接上下文", self.handoff))
+            tools.addWidget(self.btn("连接 VS Code Codex 记忆", self.connect_local_codex))
             p.addLayout(tools)
             self.selected_note = None
 
@@ -555,6 +556,33 @@ def main():
                 self.refresh_memory()
             except Exception as exc:
                 self.alert(exc, True)
+
+        def connect_local_codex(self):
+            """Owner opt-in: uses official local Codex MCP config manager."""
+            from bridge.codex_connect import autodetect_backend_python, register_codex_memory
+            backend = autodetect_backend_python(root=root)
+            if not backend:
+                backend, _ = QFileDialog.getOpenFileName(
+                    self, "选择已安装 Bridge 后端的 Python (.venv/bin/python)",
+                    str(Path.home()), "Python interpreter (python python3 python3.*);;All files (*)")
+            if not backend:
+                return
+            if QMessageBox.question(
+                self, "连接独立 VS Code Codex",
+                "将为当前 Ubuntu 用户的 Codex 注册本地记忆 MCP。\n"
+                "仅允许访问已授权项目的 SQLite 记忆，不会提供任意文件写入权限。\n"
+                "注册前会备份已有 Codex 设置；之后需要重新载入 VS Code Codex。\n\n"
+                "确定继续？",
+            ) != QMessageBox.Yes:
+                return
+            try:
+                result = register_codex_memory(
+                    self.studio.config(), self.studio.config_path, backend,
+                    confirmed=True)
+                self.alert("记忆工具已注册。重新启动 VS Code Codex，检查 MCP 工具列表。\n"
+                           + "Codex 独立会话需要主动调用记忆工具；不能自动抓取全部聊天。")
+            except Exception as exc:
+                self.alert(str(exc), True)
 
         def handoff(self):
             pid = self.active_id(self.memory_project)
