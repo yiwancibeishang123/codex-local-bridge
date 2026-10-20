@@ -1,6 +1,6 @@
 # v0.4 beta explicit handoff
 
-Maintenance-copy implementation only. No production deployment, restart, automatic memory injection, or automatic transcript capture is introduced.
+Implemented on the GitHub development branch `feat/bridge-studio-v0.4`. No production deployment, restart, automatic memory injection, or automatic transcript capture is introduced. The stable `main` branch remains untouched.
 
 The existing ten MCP tools and three memory tools are preserved. Two read-only Pydantic structured tools bring discovery to 15:
 

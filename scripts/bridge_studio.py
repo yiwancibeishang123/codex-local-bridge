@@ -225,6 +225,30 @@ class Studio:
         safe['file_count'] = len(edits) if isinstance(edits, list) else 0
         return safe
 
+    def remember_task(self, task_id):
+        """Owner-requested receipt; only trusted persisted status, never model narration."""
+        status = self.task_detail(task_id)
+        if status['state'] not in ('succeeded', 'failed', 'cancelled', 'interrupted'):
+            raise Problem(409, '任务尚未结束，无法将结果保存为记忆。')
+        def label(value):
+            return '是' if value is True else '否' if value is False else '未知'
+        rows = [
+            '任务 ID：' + status['id'],
+            '执行状态：' + status['state'],
+            '引擎执行成功：' + label(status['execution_succeeded']),
+            '测试通过：' + label(status['tests_passed']),
+            '源码已写回：' + label(status['changes_applied']),
+            '源仓库已提交：' + label(status['source_commit_created']),
+            '变更文件数：' + str(status['file_count']),
+        ]
+        rows += ['变更路径：' + name for name in status['files']]
+        # No prompts, source, stdout, engine narration, authentication or full diffs.
+        return self.memory.upsert_note(
+            status['project_id'], title='任务验收 ' + task_id[:12],
+            body='\n'.join(rows), kind='task', tags=['任务验收', status['state']],
+            origin='studio', source='bridge-task:' + task_id,
+            provenance='Bridge 数据库中的任务状态；需自行核对对应代码和测试。')
+
     def connections(self):
         try:
             with socket.create_connection(('127.0.0.1', 8767), timeout=0.5):
@@ -438,6 +462,11 @@ class Handler(BaseHTTPRequestHandler):
                 with app.lock:
                     app.sessions.pop(digest, None)
                 return self.reply(200, {'ok': True}, cookie='studio_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0')
+            elif route.path == '/api/task/remember':
+                task_id = data.get('task_id')
+                if data.get('confirm') != 'REMEMBER ' + str(task_id):
+                    raise Problem(400, '请明确确认保存该任务结果。')
+                result = app.remember_task(task_id)
             elif route.path == '/api/notes/save':
                 result = app.memory.upsert_note(data.get('project_id'), title=data.get('title'),
                     body=data.get('body', ''), kind=data.get('kind', 'knowledge'), tags=data.get('tags', []),
@@ -478,7 +507,7 @@ HTML = r'''<!doctype html>
 </style></head><body>
 <section id="login" class="card login"><div class="brand"><span class="mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h11a4 4 0 010 8H4m0-8v12m0-8h12M9 3v18"/></svg></span>Bridge Studio</div><h1>你的本地工作室</h1><p>连接项目、任务与共享记忆。请输入此设备的独立管理密钥。</p><form id="login-form"><label for="admin">管理密钥</label><input id="admin" type="__SECRET_TYPE__" autocomplete="off" required maxlength="256"><p><small>首次启动显示在终端；可运行 <code>python3 scripts/bridge_studio.py --show-key</code> 再次查看。</small></p><button class="primary" type="submit">进入工作室</button></form><div id="login-status" role="status"></div></section>
 <div id="app" class="shell" hidden><aside><div class="brand"><span class="mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h11a4 4 0 010 8H4m0-8v12m0-8h12M9 3v18"/></svg></span>Bridge</div><div class="caption">LOCAL STUDIO / 0.4</div><nav aria-label="主导航"></nav><footer>本机私有工作空间<br>127.0.0.1 · 独立管理会话<br>OAuth MCP 保持独立</footer></aside><main><header class="top"><div><div class="eyebrow">YOUR LOCAL WORKSPACE</div><h1 id="title">总览</h1><span class="muted" id="subtitle">项目与知识，在这里汇合。</span></div><div class="row"><button id="refresh">刷新状态</button><button id="logout">退出</button></div></header><div id="notice" role="status" aria-live="polite"></div><section id="view" aria-label="工作区"></section></main></div>
-<dialog id="task-detail"><h2>任务执行详情</h2><div id="task-info" class="stack"></div><div class="actions"><button id="close-task" type="button">关闭</button></div></dialog>
+<dialog id="task-detail"><h2>任务执行详情</h2><div id="task-info" class="stack"></div><div class="actions"><button id="remember-task" type="button" class="primary">保存验收结果到项目记忆</button><button id="close-task" type="button">关闭</button></div></dialog>
 <dialog id="editor"><form id="note-form"><h2 id="editor-title">新建记忆</h2><p class="muted">记忆来源固定为 studio；请勿填写密码或凭据。</p><label for="note-title">标题</label><input id="note-title" maxlength="300" required><label for="note-kind">类型</label><select id="note-kind"><option value="knowledge">知识</option><option value="decision">决策</option><option value="project">项目</option><option value="task">任务</option></select><label for="note-tags">标签（逗号分隔）</label><input id="note-tags"><label for="note-body">正文</label><textarea id="note-body" maxlength="12000"></textarea><div id="editor-status" role="status"></div><div class="actions"><button class="primary" type="submit">保存记忆</button><button id="close-editor" type="button">取消</button></div></form></dialog>
 <script>
 'use strict';
@@ -499,6 +528,13 @@ function badge(parent,label,good=false){add(parent,'span','pill'+(good?' good':'
 function metric(parent,label,value,detail,percent){const c=card(parent,label);add(c,'div','value',value);add(c,'small','',detail);const bar=add(c,'div','bar');const fill=add(bar,'span');fill.style.width=Math.max(0,Math.min(100,percent))+'%'}
 function taskTable(parent,items){if(!items.length)return empty(parent,data.tasks.available?'暂无任务记录。':'任务数据库尚不可用。');const wrap=add(parent,'div','table-wrap'),t=add(wrap,'table'),head=add(t,'thead'),row=add(head,'tr');['任务 / 项目','状态','测试','写回'].forEach(x=>add(row,'th','',x));const body=add(t,'tbody');items.forEach(x=>{const r=add(body,'tr');const a=add(r,'td');button(a,String(x.id||'').slice(0,14),()=>showTask(x.id));add(a,'small','',x.project_id||'—');add(r,'td','',x.state||'未知');add(r,'td','',x.tests_passed===true?'通过':x.tests_passed===false?'失败':'未执行 / 未知');add(r,'td','',x.changes_applied===true?'已写回':'未写回')})}
 async function showTask(id){
+ $('remember-task').onclick=async()=>{
+  if(!confirm('将任务 '+id.slice(0,12)+' 的真实执行状态保存为项目记忆？不会保存 prompt、日志或源码。'))return;
+  const action=$('remember-task');action.disabled=true;
+  try{await api('/api/task/remember',{task_id:id,confirm:'REMEMBER '+id});
+    message($('notice'),'已保存为项目记忆。');$('task-detail').close();
+  }catch(e){message($('task-info'),e.message,true)}finally{action.disabled=false}
+ };
  const info=$('task-info');info.replaceChildren();add(info,'p','muted','正在读取任务记录…');
  $('task-detail').showModal();
  try{

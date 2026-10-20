@@ -1,11 +1,11 @@
-# Codex Bridge Studio v0.4-alpha · 本地试用说明
+# Codex Bridge Studio v0.4-beta · 本地试用说明
 
-> 当前代码位于 `bridge_maintenance` 的隔离维护副本。无需改变已部署的 v0.3.1 MCP，即可本地试用独立的 Studio UI。**尚未发布为正式版本，不要直接覆盖生产服务。**
+> GitHub 开发分支 `feat/bridge-studio-v0.4` 已包含可试用 Beta 代码；旧的 `bridge_maintenance` 副本用于隔离开发。**请在独立目录检出 Beta，不要直接覆盖正在运行的稳定 MCP 服务。** 详细步骤见 [Beta 发布说明](V04_BETA_RELEASE.md)。
 
 ## 启动（仅 Ubuntu 本机）
 
 ```bash
-python3 ~/.local/share/codex-local-bridge/maintenance-workspace/scripts/bridge_studio.py
+python3 scripts/bridge_studio.py
 ```
 
 浏览器打开 `http://127.0.0.1:8768`，输入首次启动时终端显示的 Studio 管理密钥。密钥写在 owner-only `<state_dir>/studio-ui.key`，不要粘贴给聊天模型、Git 仓库或截图分享。忘记时可在本机命令行执行：
@@ -16,7 +16,7 @@ python3 ~/.local/share/codex-local-bridge/maintenance-workspace/scripts/bridge_s
 
 按 Ctrl+C 停止测试 UI。不要让 Tailscale Funnel、Nginx、Cloudflare 或任何公网入口转发端口 8768；它只是本机管理员操作台。原 MCP 服务保留 8767、OAuth 和 Tailscale 链路。
 
-## 首轮可用操作
+## Beta 可用操作
 
 - **总览**：本地 8767 TCP 检查、已注册项目数、最近任务成功率（不等于测试通过率）、活跃记忆数量。
 - **项目**：只读显示权限与项目路径；可以撤销已有自动写入授权；自动授权的发放仍要求本机 CLI 明确批准。新增只读项目支持双步骤：先预检，再本机 Studio 管理员确认注册和重启原 Bridge；已有配置备份/回滚脚本负责落盘。

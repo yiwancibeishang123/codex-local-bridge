@@ -77,5 +77,38 @@ class TestTaskDetail(StudioTests):
             self.assertNotIn(forbidden,raw)
 
 
+    def test_explicit_receipt_saved_as_project_memory_and_handoff(self):
+        self.seed_task()
+        self.login()
+        tid='a'*32
+        status, _, raw = self.request('POST', '/api/task/remember', {
+            'task_id': tid, 'confirm': 'REMEMBER '+tid})
+        self.assertEqual(status, 200)
+        note=json.loads(raw)
+        self.assertEqual(note['kind'], 'task')
+        self.assertEqual(note['project_id'], 'alpha')
+        self.assertEqual(note['source'], 'bridge-task:'+tid)
+        self.assertNotIn('PRIVATE', json.dumps(note))
+        from types import SimpleNamespace
+        from bridge.store import Store
+        from bridge.handoff import build_project_handoff
+        backend=SimpleNamespace(store=Store(self.state),project=self.app.project)
+        handoff=build_project_handoff(backend,'alpha')
+        self.assertTrue(handoff['memories'])
+        self.assertIn('任务验收', handoff['memories'][0]['title'])
+        for secret in ('PRIVATE PROMPT','PRIVATE LOG','PRIVATE CODE','PRIVATE DIFF'):
+            self.assertNotIn(secret,json.dumps(handoff))
+        self.assertEqual(self.request('POST','/api/task/remember',{
+            'task_id':tid,'confirm':'NO'} )[0],400)
+
+    def test_running_task_receipt_cannot_be_persisted(self):
+        self.seed_task('b'*32,extra={'state':'running'})
+        self.login()
+        tid='b'*32
+        self.assertEqual(self.request('POST','/api/task/remember',{
+            'task_id':tid,'confirm':'REMEMBER '+tid})[0],409)
+        self.assertEqual(self.app.memory.list_notes('alpha'),[])
+
+
 if __name__=='__main__':
     unittest.main()
