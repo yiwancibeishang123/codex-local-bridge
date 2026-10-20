@@ -7,7 +7,7 @@
 **在 ChatGPT 网页端规划，在自己的 Ubuntu 上让 Codex 修改、测试并交付代码。**
 
 [![Tests](https://github.com/yiwancibeishang123/codex-local-bridge/actions/workflows/ci.yml/badge.svg?branch=feat%2Fbridge-studio-v0.4)](docs/VALIDATION.md)
-[![Version](https://img.shields.io/badge/version-0.4.0b2-6655df)](https://github.com/yiwancibeishang123/codex-local-bridge/releases)
+[![Version](https://img.shields.io/badge/version-0.5.0a1-5366d5)](https://github.com/yiwancibeishang123/codex-local-bridge/releases)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776ab)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -16,6 +16,8 @@
 </div>
 
 ---
+
+> **v0.5 Native Alpha（开发中）**：全新 PySide6 原生窗口，不再依赖浏览器使用 Studio；同一个工作台中可查看项目、选择关闭/只读/读写权限，提交 Codex 任务，浏览文件及管理项目级 SQLite 长期记忆。首次安装桌面依赖：`.venv/bin/python -m pip install -e '.[desktop]'`，之后从 Ubuntu 应用菜单点击即可。**只在开发分支，尚未升级正在运行的 MCP**。详见 [原生桌面版](docs/V05_NATIVE_ALPHA.md)。
 
 > **新版：Ubuntu 桌面一键启动**：首次执行一次 `python3 scripts/studio_desktop.py install`，以后从 Ubuntu 应用菜单点击 **Bridge Studio** 即可启动本地控制台并打开浏览器。可固定在 Dock，自动检测/启动服务，不需要每天输入一堆命令。[桌面安装说明](docs/V04_ONE_CLICK_DESKTOP.md)。
 

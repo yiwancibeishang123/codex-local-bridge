@@ -75,7 +75,8 @@ class Studio:
         return data
 
     def project(self, project_id):
-        return next((p for p in self.config()['projects'] if p['id'] == project_id), None)
+        return next((p for p in self.config()['projects'] if p['id'] == project_id
+                     and p.get('enabled') is not False), None)
 
     def load_key(self):
         path = self.state / 'studio-ui.key'
@@ -128,7 +129,7 @@ class Studio:
             if not isinstance(pid, str) or not IDENTIFIER.fullmatch(pid):
                 continue
             result.append({'id': pid, 'name': p.get('name', pid), 'root': p['root'],
-                           'access': self.policy(pid),
+                           'access': 'disabled' if p.get('enabled') is False else self.policy(pid),
                            'grant_command': shlex.join([str(CLI), 'grant-project', pid])})
         return result
 

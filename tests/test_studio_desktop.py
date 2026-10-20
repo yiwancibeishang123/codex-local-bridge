@@ -25,7 +25,9 @@ class DesktopTests(unittest.TestCase):
         (self.root / "scripts").mkdir(parents=True)
         (self.root / "bridge").mkdir()
         (self.root / "docs/assets").mkdir(parents=True)
-        for name in ("scripts/studio_desktop.py", "scripts/bridge_studio.py",
+        (self.root / ".venv/bin").mkdir(parents=True)
+        (self.root / ".venv/bin/python").write_text("python stub")
+        for name in ("scripts/bridge_studio_native.py", "scripts/studio_desktop.py", "scripts/bridge_studio.py",
                      "bridge/memory.py", "docs/assets/bridge-studio-icon.svg"):
             (self.root / name).write_text("dummy source", encoding="utf-8")
         self.state = self.home / ".local/share/codex-local-bridge"
@@ -118,21 +120,26 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual((self.state / "studio.sqlite3").read_text(), "not deleted")
         self.assertTrue(self.bridge_config.exists())
 
-    def test_open_reuses_running_local_ui_and_opens_browser(self):
+    def test_open_starts_native_qt_without_browser(self):
         self.install(launch=False)
-        with patch.object(self.app, "ready", return_value=True), \
-             patch.object(self.app, "systemctl", side_effect=AssertionError("not needed")), \
-             patch.object(desktop.shutil, "which", return_value="/usr/bin/xdg-open"), \
-             patch.object(desktop.subprocess, "Popen") as popen:
+        with patch.object(desktop.subprocess, "run",
+                          return_value=SimpleNamespace(returncode=0)) as run, \
+             patch.object(desktop.subprocess, "Popen") as popen, \
+             patch.object(desktop.shutil, "which",
+                          side_effect=AssertionError("browser must not be invoked")):
             self.app.open()
-        self.assertEqual(popen.call_args.args[0], ["/usr/bin/xdg-open", desktop.URL])
+        self.assertIn("PySide6.QtWidgets", run.call_args.args[0])
+        self.assertEqual(popen.call_args.args[0][-1],
+                         str(self.root / "scripts/bridge_studio_native.py"))
+        self.assertNotIn("xdg-open", str(popen.call_args))
 
-    def test_foreign_port_fails_closed_without_opening_browser(self):
+    def test_missing_qt_blocks_native_launch_safely(self):
         self.install(launch=False)
-        with patch.object(self.app, "ready", return_value=False), \
-             patch.object(self.app, "listening", return_value=True), \
-             patch.object(desktop.subprocess, "Popen", side_effect=AssertionError):
-            with self.assertRaisesRegex(RuntimeError, "8768"):
+        with patch.object(desktop.subprocess, "run",
+                          return_value=SimpleNamespace(returncode=1)), \
+             patch.object(desktop.subprocess, "Popen",
+                          side_effect=AssertionError("no launch without Qt")):
+            with self.assertRaisesRegex(RuntimeError, "PySide6"):
                 self.app.open()
 
     def test_unsafe_config_and_symlink_rejected(self):

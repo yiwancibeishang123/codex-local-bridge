@@ -28,7 +28,8 @@ class Bridge:
         self.active = {}
 
     def project(self, id):
-        if id not in self.projects: raise ValueError('Project is not authorized')
+        if id not in self.projects or self.projects[id].get('enabled') is False:
+            raise ValueError('Project is not authorized')
         return self.projects[id]
 
     def sources(self, p, root=None):
@@ -66,7 +67,7 @@ class Bridge:
         return [{'id': p['id'], 'name': p.get('name',p['id']), 'include': p['include'],
                  'default_mode': 'read', 'allowed_modes':p.get('allowed_modes',['read','write_test']),
                  'context_files':p.get('context_files'), 'github_url':p.get('github_url'),
-                 'authorization':self.authorization.describe(p['id']), 'test_commands': p.get('tests',[])} for p in self.projects.values()]
+                 'authorization':self.authorization.describe(p['id']), 'test_commands': p.get('tests',[])} for p in self.projects.values() if p.get('enabled') is not False]
 
     def scope(self, task):
         p = self.project(task['project_id'])
@@ -184,6 +185,11 @@ class Bridge:
             if parent:
                 prior=self.store.get('result',parent['id']) or {}
                 t={**t,'prompt':t['prompt']+'\nPrevious verified Bridge test results:\n'+json.dumps(prior.get('tests',[]))}
+            # Local, project-isolated memory is DATA, not executable instructions.
+            from .auto_memory import load_for_codex
+            memory_context = load_for_codex(self, t['project_id'])
+            if memory_context:
+                t={**t,'prompt':t['prompt']+memory_context}
             baseline=parent['baseline'] if parent and not parent.get('changes_applied') else context.copy()
             for rel,text in context.items():
                 path=checked(destination,rel,p['include']); path.parent.mkdir(parents=True,exist_ok=True); path.write_text(text)
@@ -264,6 +270,12 @@ class Bridge:
                 await self.log(id,'bridge/engine_stderr',{'output':''.join(server.logs[-20:])})
         finally:
             if server: await server.close()
+            # Capture verified terminal status even on failure/cancel; never block tasks.
+            try:
+                from .auto_memory import capture_finished
+                capture_finished(self, id)
+            except Exception:
+                self.store.audit('project_memory_capture_skipped', {'task_id': id})
 
     def sources_untracked(self,p,root,paths):
         return {rel:checked(root,rel,p['include']).read_text() for rel in sorted(paths)}

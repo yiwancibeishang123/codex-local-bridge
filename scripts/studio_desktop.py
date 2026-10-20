@@ -142,7 +142,7 @@ StartupNotify=true
         return subprocess.run(["systemctl", "--user", *args],
                               stdin=subprocess.DEVNULL, capture_output=True, timeout=12)
 
-    def install(self, autostart=True, launch=True, dry_run=False):
+    def install(self, autostart=False, launch=True, dry_run=False):
         state = self.state()
         assets = self.assets(state)
         for p in assets:
@@ -225,50 +225,28 @@ StartupNotify=true
                     BRIDGE_STUDIO_DESKTOP="1", PORT=str(PORT))
 
     def open(self):
+        """Launch a real Qt desktop window, never a browser or webview."""
         installed = self.as_installed()
         if installed.root != self.root or installed.bridge_config != self.bridge_config:
             return installed.open()
-        state = self.state()
-        if not self.ready():
-            if self.listening():
-                raise RuntimeError("端口 8768 已被其他程序使用，拒绝打开")
-            try:
-                self.systemctl("start", "bridge-studio.service")
-            except (OSError, subprocess.TimeoutExpired):
-                pass
-            for _ in range(10):
-                if self.ready():
-                    break
-                time.sleep(.2)
-            if not self.ready():
-                if self.listening():
-                    raise RuntimeError("端口 8768 已被其他程序使用")
-                log = state / "studio-desktop.log"
-                if log.is_symlink():
-                    raise PermissionError("不允许写入日志符号链接")
-                fd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
-                try:
-                    subprocess.Popen(["/usr/bin/python3", str(self.app)],
-                                     cwd=self.root, env=self.environment(),
-                                     stdin=subprocess.DEVNULL, stdout=fd, stderr=fd,
-                                     start_new_session=True)
-                finally:
-                    os.close(fd)
-                for _ in range(24):
-                    if self.ready():
-                        break
-                    time.sleep(.25)
-            if not self.ready():
-                raise RuntimeError("无法启动 Studio，请运行 doctor 查看状态")
-        for name in ("xdg-open", "gio"):
-            command = shutil.which(name)
-            if command:
-                args = [command, URL] if name == "xdg-open" else [command, "open", URL]
-                subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                 stderr=subprocess.DEVNULL, start_new_session=True)
-                print("✓ 已打开 " + URL)
-                return
-        print("Studio 已启动，请打开浏览器访问：" + URL)
+        self.state()
+        native = self.root / "scripts/bridge_studio_native.py"
+        python = self.root / ".venv/bin/python"
+        if not native.is_file():
+            raise FileNotFoundError("缺少原生 Bridge Studio 程序文件")
+        if not python.is_file():
+            raise FileNotFoundError("未找到项目虚拟环境，请先按原版说明安装桌面依赖")
+        result = subprocess.run(
+            [str(python), "-c", "import PySide6.QtWidgets"], capture_output=True,
+            text=True, timeout=10, check=False)
+        if result.returncode:
+            raise RuntimeError("需要安装 PySide6：.venv/bin/python -m pip install -e '.[desktop]'")
+        subprocess.Popen(
+            [str(python), str(native)],
+            cwd=self.root, env=self.environment(),
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, start_new_session=True)
+        print("✓ 已启动 Bridge Studio 原生桌面窗口")
 
     def show_key(self):
         self.state()
@@ -332,7 +310,8 @@ def main(argv=None):
     cli = argparse.ArgumentParser(description=__doc__)
     cmd = cli.add_subparsers(dest="action", required=True)
     a = cmd.add_parser("install", help="首次安装：创建应用图标并可选自动启动")
-    a.add_argument("--no-autostart", action="store_true")
+    a.add_argument("--web-backend-autostart", action="store_true",
+                   help="可选：同时启动旧版网页后台，原生应用不需要")
     a.add_argument("--no-launch", action="store_true")
     a.add_argument("--dry-run", action="store_true")
     for action in ("open", "key", "doctor", "uninstall"):
@@ -342,7 +321,7 @@ def main(argv=None):
     args = cli.parse_args(argv)
     app = Desktop()
     if args.action == "install":
-        app.install(not args.no_autostart, not args.no_launch, args.dry_run)
+        app.install(args.web_backend_autostart, not args.no_launch, args.dry_run)
     elif args.action == "open":
         app.as_installed().open()
     elif args.action == "key":
