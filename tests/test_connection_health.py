@@ -46,7 +46,7 @@ class DiagnosticsTests(unittest.TestCase):
         self.config.write_text(json.dumps(self.data), encoding="utf-8")
         self.config.chmod(0o600)
 
-    def run(self, argv, **kwargs):
+    def fake_run(self, argv, **kwargs):
         self.calls.append(argv)
         if argv[0] == "systemctl":
             return SimpleNamespace(returncode=0, stdout="")
@@ -66,7 +66,7 @@ class DiagnosticsTests(unittest.TestCase):
 
     def diagnostics(self, **kwargs):
         return ConnectionDiagnostics(
-            self.config, run=self.run, connect=self.probe,
+            self.config, run=self.fake_run, connect=self.probe,
             lookup=self.lookup, **kwargs)
 
     def test_all_local_healthy_remote_remains_explicitly_unverified(self):
