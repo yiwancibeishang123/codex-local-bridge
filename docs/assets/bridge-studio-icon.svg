@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Bridge Studio icon">
+  <defs>
+    <linearGradient id="surface" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#15244B"/>
+      <stop offset="1" stop-color="#0D1532"/>
+    </linearGradient>
+    <linearGradient id="bridge" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#A594FF"/>
+      <stop offset=".53" stop-color="#6E75EF"/>
+      <stop offset="1" stop-color="#39C5DE"/>
+    </linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="11"/></filter>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="66" fill="url(#surface)"/>
+  <circle cx="189" cy="63" r="40" fill="#6666FF" opacity=".18" filter="url(#glow)"/>
+  <path d="M65 67h65c31 0 48 15 48 39 0 20-15 33-41 35l-25 2v45"
+        fill="none" stroke="url(#bridge)" stroke-width="21" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M65 67v120m0-63h117" fill="none" stroke="#F4F4FF" stroke-width="17"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="182" cy="124" r="13" fill="#53DCDB" stroke="#162849" stroke-width="5"/>
+  <circle cx="65" cy="188" r="12" fill="#A99CFF" stroke="#162849" stroke-width="5"/>
+</svg>

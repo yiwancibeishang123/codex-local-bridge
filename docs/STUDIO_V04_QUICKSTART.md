@@ -2,7 +2,11 @@
 
 > GitHub 开发分支 `feat/bridge-studio-v0.4` 已包含可试用 Beta 代码；旧的 `bridge_maintenance` 副本用于隔离开发。**请在独立目录检出 Beta，不要直接覆盖正在运行的稳定 MCP 服务。** 详细步骤见 [Beta 发布说明](V04_BETA_RELEASE.md)。
 
-## 启动（仅 Ubuntu 本机）
+## 一键桌面版（推荐）
+
+先阅读 [Ubuntu 安装一次、以后点图标打开](V04_ONE_CLICK_DESKTOP.md)。已有 v0.4 Beta 独立目录时，运行一次 `python3 scripts/studio_desktop.py install`，以后在 Ubuntu 应用菜单直接点击 Bridge Studio。登录密钥可通过应用菜单中的辅助入口查看（本机）。
+
+## 手动启动（仅开发时）
 
 ```bash
 python3 scripts/bridge_studio.py

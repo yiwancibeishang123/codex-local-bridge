@@ -6,8 +6,8 @@
 
 **在 ChatGPT 网页端规划，在自己的 Ubuntu 上让 Codex 修改、测试并交付代码。**
 
-[![Tests](https://img.shields.io/badge/local_tests-71_passed-success)](docs/VALIDATION.md)
-[![Version](https://img.shields.io/badge/version-0.4.0b1-6655df)](https://github.com/yiwancibeishang123/codex-local-bridge/releases)
+[![Tests](https://github.com/yiwancibeishang123/codex-local-bridge/actions/workflows/ci.yml/badge.svg?branch=feat%2Fbridge-studio-v0.4)](docs/VALIDATION.md)
+[![Version](https://img.shields.io/badge/version-0.4.0b2-6655df)](https://github.com/yiwancibeishang123/codex-local-bridge/releases)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776ab)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -16,6 +16,8 @@
 </div>
 
 ---
+
+> **新版：Ubuntu 桌面一键启动**：首次执行一次 `python3 scripts/studio_desktop.py install`，以后从 Ubuntu 应用菜单点击 **Bridge Studio** 即可启动本地控制台并打开浏览器。可固定在 Dock，自动检测/启动服务，不需要每天输入一堆命令。[桌面安装说明](docs/V04_ONE_CLICK_DESKTOP.md)。
 
 > **Bridge Studio v0.4 Beta（开发分支）**：现已提供本地中文管理 UI、项目级 SQLite 记忆、手动保存任务验收结果、记忆交接与测试状态详情。测试地址 `http://127.0.0.1:8768`（**仅 Ubuntu 本机**）。[查看 Beta 安装与限制](docs/V04_BETA_RELEASE.md) · [UI 使用说明](docs/STUDIO_V04_QUICKSTART.md) · [记忆交接协议](docs/V04_HANDOFF_GUIDE.md)。**未自动部署到现有 MCP；稳定版仍在 main。**
 

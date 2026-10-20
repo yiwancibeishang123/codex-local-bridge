@@ -584,7 +584,7 @@ def main():
     if not 1024 <= port <= 65535 or port == 8767:
         raise ValueError('Choose a Studio port distinct from MCP')
     with StudioServer(app, port) as server:
-        if app.created:
+        if app.created and os.environ.get('BRIDGE_STUDIO_DESKTOP') != '1':
             print('首次启动管理密钥（请仅在本机保管）:', app.admin, flush=True)
         print(f'本地工作室 http://127.0.0.1:{server.server_port} · 不部署或重启 Bridge', flush=True)
         try:

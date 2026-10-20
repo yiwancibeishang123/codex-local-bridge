@@ -1,6 +1,6 @@
 # Bridge Studio v0.4 Beta · GitHub development branch
 
-Development branch: `feat/bridge-studio-v0.4`; version `0.4.0b1`. The existing stable `main` and production MCP installation are deliberately untouched.
+Development branch: `feat/bridge-studio-v0.4`; version `0.4.0b2`. The existing stable `main` and production MCP installation are deliberately untouched.
 
 ## Implemented in this branch
 
@@ -12,6 +12,10 @@ Development branch: `feat/bridge-studio-v0.4`; version `0.4.0b1`. The existing s
 - Existing 10 authenticated MCP tools plus 5 scoped memory/handoff tools: search_project_memories, save_project_memory, archive_project_memory, get_project_handoff, get_task_receipt.
 - Handoffs carry a provenance warning, limited selection/byte budget, project scope. Task receipt checks persisted evidence instead of trusting model narration.
 - CI for Python 3.10 / 3.12, security and integration regression tests.
+
+## Ubuntu one-click desktop integration
+
+After the first developer checkout and local Bridge configuration, run `python3 scripts/studio_desktop.py install` **once**, then use the Ubuntu **Bridge Studio** application icon. See [desktop installation / maintenance / safety](V04_ONE_CLICK_DESKTOP.md). This creates an owner-only user systemd service and launcher, preserves the original MCP installation, and never publishes port 8768.
 
 ## Local alpha/beta evaluation (no production replacement)
 
