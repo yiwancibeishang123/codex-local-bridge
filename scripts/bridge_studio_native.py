@@ -600,7 +600,7 @@ def main():
                 job.success.connect(
                     lambda result: self.alert("自动记忆设置已更新：" +
                                               ("启用" if result["enabled"] else "关闭")))
-                job.error.connect(lambda error: self.alert(error, True))
+                job.failure.connect(lambda error: self.alert(error, True))
                 def done():
                     self.memory_switch_worker = None
                     job.deleteLater()
