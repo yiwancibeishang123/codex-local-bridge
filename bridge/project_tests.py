@@ -29,14 +29,20 @@ class ProjectSyntaxCheck(unittest.TestCase):
     def test_top_level_python_sources_compile(self):
         root = Path(__file__).resolve().parent.parent
         checked = 0
-        for source in sorted(root.glob("*.py"))[:64]:
-            if source.is_symlink() or source.stat().st_size > 300000:
-                continue
-            with self.subTest(file=source.name):
-                ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
-                checked += 1
+        patterns = ("*.py", "*.yaml", "*.yml", "*.cpp", "*.hpp", "*.md", "*.toml")
+        for pat in patterns:
+            for source in sorted(root.glob(pat))[:25]:
+                if source.is_symlink() or not source.is_file() or source.stat().st_size > 300000:
+                    continue
+                with self.subTest(file=source.name):
+                    content = source.read_text(encoding="utf-8")
+                    if source.suffix == ".py":
+                        ast.parse(content, filename=str(source))
+                    else:
+                        self.assertTrue(content.strip(), "Empty project source")
+                    checked += 1
         self.assertTrue(root.is_dir())
-        self.assertGreaterEqual(checked, 0)
+        self.assertGreater(checked, 0, "No inspectable top-level source file")
 '''
 
 def _authorized_path(root):

@@ -47,6 +47,13 @@ class TestProfiles(unittest.TestCase):
         from bridge.policy import ordinary_tests
         self.assertTrue(ordinary_tests(saved["projects"][0]["tests"]))
         self.assertTrue(Path(result["backup"]).is_file())
+        # Prove the generated profile genuinely runs; never claim 0 tests means pass.
+        import subprocess
+        proc=subprocess.run(["/usr/bin/python3","-m","unittest","discover",
+                             "-s",SMOKE_DIR,"-v"], cwd=self.root,
+                            capture_output=True,text=True,timeout=10)
+        self.assertEqual(proc.returncode,0,proc.stderr)
+        self.assertIn("Ran 1 test",proc.stderr)
 
     def test_profile_failure_removes_new_test_file_and_restores_config(self):
         before=self.cfg.read_bytes()
