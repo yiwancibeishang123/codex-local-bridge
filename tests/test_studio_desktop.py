@@ -86,12 +86,12 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(restored.root, self.root)
         self.assertEqual(restored.bridge_config, custom.resolve())
         self.assertEqual(restored.state(), self.state)
-        with patch.object(restored, "ready", return_value=True), \
-             patch.object(restored, "systemctl", side_effect=AssertionError("not needed")), \
-             patch.object(desktop.shutil, "which", return_value="/usr/bin/xdg-open"), \
+        with patch.object(desktop.subprocess, "run",
+                          return_value=SimpleNamespace(returncode=0)), \
              patch.object(desktop.subprocess, "Popen") as popen:
             restored.open()
-        self.assertEqual(popen.call_args.args[0], ["/usr/bin/xdg-open", desktop.URL])
+        self.assertEqual(popen.call_args.args[0][-1],
+                         str(self.root / "scripts/bridge_studio_native.py"))
 
     def test_dry_run_has_no_files_or_service_side_effects(self):
         with patch.object(self.app, "systemctl", side_effect=AssertionError), \
@@ -128,7 +128,7 @@ class DesktopTests(unittest.TestCase):
              patch.object(desktop.shutil, "which",
                           side_effect=AssertionError("browser must not be invoked")):
             self.app.open()
-        self.assertIn("PySide6.QtWidgets", run.call_args.args[0])
+        self.assertIn("PySide6.QtWidgets", run.call_args.args[0][-1])
         self.assertEqual(popen.call_args.args[0][-1],
                          str(self.root / "scripts/bridge_studio_native.py"))
         self.assertNotIn("xdg-open", str(popen.call_args))

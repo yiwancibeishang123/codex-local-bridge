@@ -37,6 +37,10 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+      - name: Install Ubuntu Qt shared libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libegl1 libgl1 libopengl0 libxcb-cursor0 libxkbcommon-x11-0
       - name: Install native desktop optional dependencies
         run: python -m pip install -e '.[desktop,test]'
       - name: Launch real QtWidgets window without a display server

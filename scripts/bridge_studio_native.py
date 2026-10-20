@@ -41,7 +41,7 @@ def main():
         )
     except ImportError as exc:
         raise SystemExit(
-            "缺少原生界面依赖 PySide6。首次安装请运行："
+            "原生 Qt 依赖加载失败：" + str(exc) + "。首次安装请运行："
             " .venv/bin/python -m pip install -e '.[desktop]'") from exc
 
     from scripts.bridge_studio import Studio
