@@ -138,12 +138,12 @@ class ProjectModes:
             # otherwise re-enabling with the same scope could resurrect access.
             from .core import Bridge
             try:
-                if mode != "write" and old == "write":
-                    # Demotion from a prior writable grant must revoke it; construct
-                    # against the previous config so revocation can still locate it.
-                    Bridge(json.loads(raw)).authorization.revoke(project_id)
-                else:
+                if mode == "write":
                     Bridge(data).authorization.grant(project_id)
+                elif old == "write":
+                    # Demotion from prior writable grant; old Bridge can locate it.
+                    Bridge(json.loads(raw)).authorization.revoke(project_id)
+                # read <-> off does not need any grant operation.
             except Exception:
                 # Never retain a silently elevated config after a grant error.
                 if self.path.read_bytes() == changed:
