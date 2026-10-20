@@ -79,7 +79,7 @@ class DesktopTests(unittest.TestCase):
             "XDG_CONFIG_HOME": str(self.home / ".config"),
             "XDG_DATA_HOME": str(self.home / ".local/share"),
         })
-        self.assertNotEqual(fresh.bridge_config, self.bridge_config)
+        self.assertNotEqual(fresh.bridge_config, custom)
         restored = fresh.as_installed()
         self.assertEqual(restored.root, self.root)
         self.assertEqual(restored.bridge_config, self.bridge_config.resolve())
