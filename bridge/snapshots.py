@@ -124,7 +124,10 @@ class StateSnapshots:
             candidates = [(self.config, "config.json", False),
                           (self.state / "bridge.sqlite3", "bridge.sqlite3", True),
                           (self.state / "studio.sqlite3", "studio.sqlite3", True),
-                          (self.unit, "service.unit", False)]\n            managed_sandbox = self.sandbox.snapshot()\n            if managed_sandbox is not None:\n                candidates.append((self.sandbox.dropin, "sandbox.conf", False))
+                          (self.unit, "service.unit", False)]
+            managed_sandbox = self.sandbox.snapshot()
+            if managed_sandbox is not None:
+                candidates.append((self.sandbox.dropin, "sandbox.conf", False))
             for source, name, is_db in candidates:
                 if not source.exists():
                     if source.is_symlink():
