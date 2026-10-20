@@ -82,7 +82,7 @@ class DesktopTests(unittest.TestCase):
         self.assertNotEqual(fresh.bridge_config, custom)
         restored = fresh.as_installed()
         self.assertEqual(restored.root, self.root)
-        self.assertEqual(restored.bridge_config, self.bridge_config.resolve())
+        self.assertEqual(restored.bridge_config, custom.resolve())
         self.assertEqual(restored.state(), self.state)
         with patch.object(restored, "ready", return_value=True), \
              patch.object(restored, "systemctl", side_effect=AssertionError("not needed")), \
