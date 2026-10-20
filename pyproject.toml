@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "codex-local-bridge"
+version = "0.3.2"
+description = "An OAuth MCP bridge from ChatGPT to a locally authenticated Codex App Server"
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.10"
+dependencies = ["mcp==1.30.0"]
+[project.urls]
+Homepage = "https://github.com/yiwancibeishang123/codex-local-bridge"
+Repository = "https://github.com/yiwancibeishang123/codex-local-bridge"
+Issues = "https://github.com/yiwancibeishang123/codex-local-bridge/issues"
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10", "httpx>=0.28,<1"]
+[project.scripts]
+codex-local-bridge = "bridge.cli:entrypoint"
+[tool.setuptools.packages.find]
+include = ["bridge*"]
+[tool.pytest.ini_options]
+testpaths = ["tests"]

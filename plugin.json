@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "codex-local-bridge",
+  "version": "0.3.2",
+  "description": "Private OAuth MCP bridge with revocable project grants, safe automatic code writes and sandboxed Codex tasks.",
+  "author": {
+    "name": "Calvin Forge"
+  },
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Codex Local Bridge",
+        "shortDescription": "Plan here, run Codex locally",
+        "longDescription": "Delegate and continue Codex tasks, inspect real tests and diffs, and read project files. Locally granted projects permit automatic ordinary code writes; risky actions require separate approval. Requires local installation, ChatGPT Codex login and OAuth HTTPS connection.",
+        "developerName": "Calvin Forge",
+        "category": "Developer Tools",
+        "defaultPrompt": "Use Codex Local Bridge to plan a task, delegate it to my authorized local project, review the returned diff and tests, and continue the same Codex thread."
+      }
+    }
+  }
+}

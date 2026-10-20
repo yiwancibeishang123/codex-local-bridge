@@ -1,0 +1,23 @@
+[Unit]
+Description=Private Codex Local Bridge (OAuth MCP)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@ROOT@
+ExecStart="@ROOT@/.venv/bin/codex-local-bridge" serve
+Environment=PYTHONUNBUFFERED=1
+UMask=0077
+Restart=on-failure
+RestartSec=5
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/share/codex-local-bridge
+PrivateTmp=true
+MemoryMax=2G
+TasksMax=128
+# Bubblewrap requires user and mount namespaces: do not RestrictNamespaces.
+
+[Install]
+WantedBy=default.target

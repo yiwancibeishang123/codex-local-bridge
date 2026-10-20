@@ -1,0 +1,52 @@
+{
+  "state_dir": "/home/YOUR_USER/.local/share/codex-local-bridge",
+  "public_url": "https://YOUR_DEVICE.YOUR_TAILNET.ts.net",
+  "port": 8767,
+  "task_timeout": 900,
+  "codex_command": [
+    "codex",
+    "app-server",
+    "--strict-config",
+    "-c",
+    "features.shell_tool=false",
+    "-c",
+    "features.unified_exec=false",
+    "-c",
+    "features.hooks=false",
+    "-c",
+    "features.multi_agent=false",
+    "-c",
+    "features.apps=false",
+    "-c",
+    "features.remote_plugin=false",
+    "-c",
+    "web_search=\"disabled\""
+  ],
+  "redirect_uris": [
+    "https://chatgpt.com/connector_platform_oauth_redirect"
+  ],
+  "projects": [
+    {
+      "id": "demo",
+      "name": "Python acceptance demo",
+      "root": "/home/YOUR_USER/codex-bridge-demo",
+      "include": [
+        "*.py"
+      ],
+      "tests": [
+        [
+          "/usr/bin/python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-v"
+        ]
+      ],
+      "file_write_enabled": false,
+      "allowed_modes": [
+        "read"
+      ],
+      "project_authorization": false
+    }
+  ]
+}
