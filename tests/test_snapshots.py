@@ -103,6 +103,30 @@ class SnapshotTests(unittest.TestCase):
         self.assertEqual(self.entries("studio.sqlite3"),["before","changed"])
         self.assertEqual(self.service.restarted,2)
 
+    def test_managed_systemd_project_sandbox_roundtrip(self):
+        from bridge.project_sandbox import HEADER
+        protected = self.manager.sandbox.dropin
+        protected.parent.mkdir(mode=0o700, parents=True)
+        prior = HEADER + "\n[Service]\nReadWritePaths=\"/home/owner/allowed\"\n"
+        protected.write_text(prior)
+        protected.chmod(0o600)
+        data=self.manager.create()
+        self.assertIn("sandbox.conf",data["files"])
+        protected.write_text(HEADER + "\n[Service]\nReadWritePaths=\"/home/owner/new\"\n")
+        protected.chmod(0o600)
+        self.manager.restore(data["id"],confirmed=True,service=self.service)
+        self.assertEqual(protected.read_text(),prior)
+
+    def test_old_snapshot_removes_only_managed_newer_dropin(self):
+        from bridge.project_sandbox import HEADER
+        data=self.manager.create()
+        protected=self.manager.sandbox.dropin
+        protected.parent.mkdir(mode=0o700, parents=True)
+        protected.write_text(HEADER + "\n[Service]\nReadWritePaths=\"/home/owner/new\"\n")
+        protected.chmod(0o600)
+        self.manager.restore(data["id"],confirmed=True,service=self.service)
+        self.assertFalse(protected.exists())
+
     def test_dangling_link_and_path_traversal_rejected(self):
         data=self.manager.create()
         with self.assertRaises(ValueError):

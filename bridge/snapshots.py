@@ -16,7 +16,7 @@ import tempfile
 import time
 import uuid
 
-NAMES = ("config.json", "bridge.sqlite3", "studio.sqlite3", "service.unit")
+NAMES = ("config.json", "bridge.sqlite3", "studio.sqlite3", "service.unit", "sandbox.conf")
 ID = re.compile(r"^[a-f0-9]{32}$")
 
 
@@ -105,6 +105,8 @@ class StateSnapshots:
         self.root = self.state / "studio-snapshots"
         self.unit = Path(unit_path or
             Path.home() / ".config/systemd/user/codex-local-bridge.service").expanduser().absolute()
+        from .project_sandbox import SystemdProjectSandbox
+        self.sandbox = SystemdProjectSandbox(unit_dir=self.unit.parent)
 
     def _root(self, create=False):
         if create and not self.root.exists():
@@ -122,7 +124,7 @@ class StateSnapshots:
             candidates = [(self.config, "config.json", False),
                           (self.state / "bridge.sqlite3", "bridge.sqlite3", True),
                           (self.state / "studio.sqlite3", "studio.sqlite3", True),
-                          (self.unit, "service.unit", False)]
+                          (self.unit, "service.unit", False)]\n            managed_sandbox = self.sandbox.snapshot()\n            if managed_sandbox is not None:\n                candidates.append((self.sandbox.dropin, "sandbox.conf", False))
             for source, name, is_db in candidates:
                 if not source.exists():
                     if source.is_symlink():
@@ -163,6 +165,12 @@ class StateSnapshots:
             raise ValueError("Unsupported or corrupted snapshot manifest")
         if "config.json" not in files or set(files).difference(NAMES):
             raise ValueError("Incomplete snapshot")
+        # A backup belongs to one private state directory; never transplant a
+        # different state_dir into this active service/database by mistake.
+        saved_config = json.loads(_private(directory / "config.json").read_text(encoding="utf-8"))
+        if (not isinstance(saved_config, dict) or
+                Path(saved_config.get("state_dir", "")).expanduser().absolute() != self.state):
+            raise ValueError("Backup state directory differs from the current Bridge")
         for name, info in files.items():
             path = _private(directory / name)
             if (not isinstance(info, dict) or _digest(path) != info.get("sha256")
@@ -214,6 +222,9 @@ class StateSnapshots:
             _replace(self.config, (directory / "config.json").read_bytes())
             if "service.unit" in manifest["files"]:
                 _replace(self.unit, (directory / "service.unit").read_bytes())
+            self.sandbox.restore(
+                (directory / "sandbox.conf").read_text(encoding="utf-8")
+                if "sandbox.conf" in manifest["files"] else None)
             service.restart_verify()
         except Exception:
             # Restore the immediately previous state if the desired restore fails.
@@ -228,6 +239,9 @@ class StateSnapshots:
                 _replace(self.config, (emergency / "config.json").read_bytes())
                 if (emergency / "service.unit").exists():
                     _replace(self.unit, (emergency / "service.unit").read_bytes())
+                self.sandbox.restore(
+                    (emergency / "sandbox.conf").read_text(encoding="utf-8")
+                    if (emergency / "sandbox.conf").is_file() else None)
                 service.restart_verify()
             except Exception as recovery:
                 raise RuntimeError("Restore failed AND automatic recovery failed; use rescue snapshot " + rescue["id"]) from recovery
