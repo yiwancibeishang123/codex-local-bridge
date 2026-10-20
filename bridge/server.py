@@ -64,6 +64,8 @@ def build_server(config,with_worker=True):
     # BEGIN LOCAL FILE TOOLS 0.2 -- project-scoped, locally approved edits
     from .filetools import create_file_bridge, register_file_tools
     register_file_tools(server, create_file_bridge(bridge))
+    from .memory_tools import register_memory_tools
+    register_memory_tools(server, bridge)
     # END LOCAL FILE TOOLS 0.2
     @server.custom_route('/consent',methods=['GET'])
     async def consent(request):

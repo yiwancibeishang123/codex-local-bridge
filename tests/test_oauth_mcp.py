@@ -49,7 +49,7 @@ def test_actual_http_oauth_pkce_and_mcp(config):
                 assert r.status_code==200,r.text
                 r=await c.post('/mcp',headers=headers,json={'jsonrpc':'2.0','id':2,'method':'tools/list'})
                 assert r.status_code==200,r.text
-                assert {t['name'] for t in r.json()['result']['tools']}=={'list_projects','delegate_task','get_task_status','get_task_result','continue_task','list_project_files','read_project_file','request_write_file','request_edit_file','get_write_status'}
+                assert {t['name'] for t in r.json()['result']['tools']}=={'list_projects','delegate_task','get_task_status','get_task_result','continue_task','list_project_files','read_project_file','request_write_file','request_edit_file','get_write_status','search_project_memories','save_project_memory','archive_project_memory'}
                 r=await c.post('/mcp',headers=headers,json={'jsonrpc':'2.0','id':3,'method':'tools/call',
                     'params':{'name':'delegate_task','arguments':{'project_id':'demo','prompt':'Fix add','mode':'write_test'}}})
                 assert r.status_code==200 and 'awaiting_approval' in r.text
