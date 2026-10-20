@@ -14,7 +14,7 @@ import subprocess
 import sys
 import tempfile
 
-VERSION = "0.5.0~alpha4"
+VERSION = "0.5.0~alpha5"
 PACKAGE = "bridge-studio-native"
 
 def exec_checked(argv):
@@ -47,6 +47,9 @@ def create_package(root, output, *, prebuilt=None, version=VERSION):
                 "--hidden-import", "scripts.studio_connection_panel",
                 "--hidden-import", "bridge.connection_health",
                 "--hidden-import", "bridge.desktop_profile",
+                "--hidden-import", "bridge.project_tests",
+                "--hidden-import", "scripts.studio_web_panel",
+                "--hidden-import", "bridge.collaboration",
                 "--add-data", str(root / "docs/assets/bridge-studio-icon.svg") + ":docs/assets",
                 "--distpath", str(dist), "--workpath", str(tmp / "work"),
                 "--specpath", str(tmp / "spec"),

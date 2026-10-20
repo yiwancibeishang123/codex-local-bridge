@@ -51,6 +51,7 @@ def main():
     from bridge.filetools import _check_path, _read_at
     from scripts.studio_upgrade_panel import UpgradePanel
     from scripts.studio_connection_panel import ConnectionPanel
+    from scripts.studio_web_panel import WebCollaborationPanel
 
     app = QApplication(sys.argv)
     app.setApplicationName("Bridge Studio")
@@ -187,7 +188,7 @@ def main():
             nav.addSpacing(36)
             pages = ["⌂   工作台总览", "▤   项目与权限", "▶   Codex 任务",
                      "✦   长期共享记忆", "◎   文件浏览", "◉   连接与诊断",
-                     "↻   升级与恢复"]
+                     "↻   升级与恢复", "⌁   网页端协作"]
             for index, title in enumerate(pages):
                 button = QPushButton(title)
                 button.setObjectName("nav")
@@ -228,6 +229,7 @@ def main():
             self.projects.setSelectionBehavior(QAbstractItemView.SelectRows)
             self.projects.setEditTriggers(QAbstractItemView.NoEditTriggers)
             toolbar.addWidget(self.btn("➕ 添加本地项目", self.add_project, True))
+            toolbar.addWidget(self.btn("配置安全测试", self.configure_project_tests))
             toolbar.addWidget(self.btn("刷新", self.reload))
             p.addLayout(toolbar)
             p.addWidget(self.projects, 1)
@@ -237,7 +239,7 @@ def main():
             line.addWidget(self.mode, 1)
             line.addWidget(self.btn("应用所选项目权限", self.change_permission, True))
             p.addLayout(line)
-            note = QLabel("读写权限仅对已配置安全测试的项目开放；敏感文件仍需单独审批。")
+            note = QLabel("开通读写前先点「配置安全测试」。可选项目自带的 unittest，或创建基础 Python 语法自检（不代表算法通过）。")
             note.setObjectName("muted")
             p.addWidget(note)
             self.projects.itemSelectionChanged.connect(self.sync_selected_mode)
@@ -339,6 +341,10 @@ def main():
             p = self.panel("升级与恢复", "图形化管理后端升级、数据一致性备份与故障回退。")
             self.upgrade_panel = UpgradePanel(self.studio.config_path, self)
             p.addWidget(self.upgrade_panel, 1)
+
+            p = self.panel("网页端协作", "在 ChatGPT 对话中进行真正的本地读写，桌面端查看写回结果与 Codex 任务证据。")
+            self.web_panel = WebCollaborationPanel(self.studio.config, self)
+            p.addWidget(self.web_panel, 1)
             self.go(0)
 
         def go(self, i):
@@ -383,6 +389,7 @@ def main():
                 self.refresh_memory_setting()
                 self.refresh_files()
                 self.refresh_health()
+                self.web_panel.populate(entries)
             except Exception as exc:
                 self.alert(exc, True)
 
@@ -484,12 +491,70 @@ def main():
             except Exception as exc:
                 self.alert(exc, True)
 
+        def configure_project_tests(self):
+            """GUI-selected safe suite, never allow arbitrary shell commands."""
+            from bridge.project_tests import ProjectTestProfiles, available_profiles
+            from scripts.studio_upgrade_panel import Operation
+            row = self.projects.currentRow()
+            if row < 0:
+                return self.alert("请先选择要配置测试的项目，例如 airgym_yingjie。")
+            pid = self.projects.item(row, 0).data(Qt.UserRole)
+            record = next((p for p in self.studio.config()["projects"] if p["id"] == pid), None)
+            if not record:
+                return self.alert("当前项目不存在。", True)
+            try:
+                from bridge.core import TERMINAL
+                pending = [t for t in Bridge(self.studio.config()).store.all("task")
+                           if t.get("state") not in TERMINAL]
+                if pending:
+                    return self.alert("仍有正在运行的 Codex 任务；请结束任务后再设置测试。")
+                profiles = available_profiles(record)
+                labels = [p["label"] for p in profiles]
+                choice, ok = QInputDialog.getItem(
+                    self, "设置项目安全测试", "为 "+pid+" 选择测试方案：",
+                    labels, 0, False)
+                if not ok:
+                    return
+                chosen = profiles[labels.index(choice)]
+                if QMessageBox.question(
+                    self, "确认测试方案",
+                    "测试方案：" + chosen["label"] + "\n\n" + chosen["description"] +
+                    "\n\n会修改本机项目测试配置并重启 Bridge。"
+                    "\n轻量语法测试不代替 AirGym/ROS/PPO 的真实功能测试。是否继续？"
+                ) != QMessageBox.Yes:
+                    return
+                if getattr(self, "test_profile_worker", None) is not None:
+                    return self.alert("已有测试设置正在执行。")
+                job = Operation(
+                    lambda: ProjectTestProfiles(self.studio.config_path).set(
+                        pid,chosen["id"],confirmed=True), self)
+                self.test_profile_worker = job
+                job.success.connect(lambda result: (
+                    self.reload(),
+                    self.alert("测试方案已保存。现在选择「读写」并应用权限。"
+                               "\n注意：基础语法检查不代表科研算法的功能正确。")))
+                job.failure.connect(lambda err: self.alert(err, True))
+                def done():
+                    self.test_profile_worker = None
+                    job.deleteLater()
+                job.finished.connect(done)
+                job.start()
+            except Exception as exc:
+                self.alert(exc, True)
+
         def change_permission(self):
             row = self.projects.currentRow()
             if row < 0:
                 return self.alert("请先选中项目。")
             pid = self.projects.item(row, 0).data(Qt.UserRole)
             target = ("off", "read", "write")[self.mode.currentIndex()]
+            if target == "write":
+                project = next((p for p in self.studio.config()["projects"]
+                                if p["id"] == pid), None)
+                if not project or not project.get("tests"):
+                    self.alert("当前项目尚未配置安全测试。我将打开测试方案选择器。")
+                    self.configure_project_tests()
+                    return
             if QMessageBox.question(
                 self, "确认本机权限变更",
                 f"项目：{pid}\n新权限：{target}\n\n此操作将重启 Bridge MCP 服务；"
@@ -541,9 +606,50 @@ def main():
             tid = self.task_records[index]["id"]
             try:
                 data = self.studio.task_detail(tid)
-                self.task_detail.setPlainText(json.dumps(data, ensure_ascii=False, indent=2))
+                self.task_detail.setHtml(self.render_task_summary(data))
             except Exception as exc:
                 self.task_detail.setPlainText("读取任务详情失败：" + str(exc))
+
+        @staticmethod
+        def render_task_summary(data):
+            """Human-readable evidence. Never render raw prompts, logs or JSON."""
+            from html import escape
+            state = {"queued":"排队中", "running":"执行中",
+                     "awaiting_approval":"待本机审批",
+                     "succeeded":"已完成", "failed":"执行失败",
+                     "cancelled":"已取消","interrupted":"中断"}
+            def flag(val):
+                return "通过" if val is True else "未通过" if val is False else "尚未验证"
+            title = escape(state.get(data.get("state"),"未知状态"))
+            rows = [
+                ("所属项目", escape(str(data.get("project_id","未知")))),
+                ("任务状态", title),
+                ("执行结果", flag(data.get("execution_succeeded"))),
+                ("测试结果", flag(data.get("tests_passed"))),
+                ("文件写回", "已应用" if data.get("changes_applied") is True
+                            else "未修改" if data.get("changes_applied") is False else "尚未确认"),
+                ("Git 提交", flag(data.get("source_commit_created"))),
+                ("实际修改文件数", str(data.get("file_count",0))),
+            ]
+            blocks = [
+                "<h2 style='color:#2c4269'>"+title+"</h2>",
+                "<p style='color:#72819a'>"+escape(str(data.get("id",""))[:12])+"</p>"
+            ]
+            blocks += ["<p><b>"+k+"：</b> "+v+"</p>" for k,v in rows]
+            tests = data.get("tests",[])
+            if tests:
+                blocks.append("<h3>沙箱测试</h3>")
+                for i,item in enumerate(tests):
+                    blocks.append("<p>测试 "+str(i+1)+"："+
+                        flag(item.get("passed"))+
+                        (" · 网络隔离" if item.get("sandboxed") else "")+"</p>")
+            files=data.get("files",[])
+            if files:
+                blocks.append("<h3>涉及文件</h3>")
+                blocks += ["<p>• "+escape(str(path))+"</p>" for path in files[:20]]
+            blocks.append("<p style='color:#78879a'>本页只展示已保存的执行事实；"
+                          "没有测试通过不等于任务一定失败，成功执行也不等于完成写回。</p>")
+            return "".join(blocks)
 
         def refresh_memory_setting(self):
             from bridge.memory_preferences import AutoMemoryPreferences

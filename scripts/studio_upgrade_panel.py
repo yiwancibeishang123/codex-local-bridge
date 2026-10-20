@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import subprocess
+from html import escape
 
 from PySide6.QtCore import QThread, Signal, QUrl
 from PySide6.QtGui import QDesktopServices
@@ -87,7 +88,29 @@ class UpgradePanel(QWidget):
                                " 个待执行或运行中的任务，请先结束或取消。")
 
     def report(self, obj):
-        self.message.append(json.dumps(obj, ensure_ascii=False, indent=2))
+        """Friendly status notes instead of dumping implementation JSON."""
+        if not isinstance(obj, dict):
+            self.message.append(str(obj))
+            return
+        if "id" in obj:
+            self.message.append("备份编号：" + str(obj["id"])[:16])
+        if "files" in obj:
+            value = obj["files"]
+            self.message.append("已保存：" + "、".join(value if isinstance(value, list) else value.keys()))
+        if "candidate" in obj:
+            info = obj["candidate"]
+            self.message.append("待安装版本：" + str(info.get("version","未知")))
+            self.message.append("代码提交：" + str(info.get("revision","未知")))
+        if "version" in obj:
+            self.message.append("当前版本：" + str(obj["version"]))
+        if "restored" in obj:
+            self.message.append("已恢复备份：" + str(obj["restored"])[:16])
+        if "verified" in obj:
+            self.message.append("验证结果：" + ("成功" if obj["verified"] else "未通过"))
+        if "snapshot" in obj:
+            self.message.append("可回退备份：" + str(obj["snapshot"])[:16])
+        if not any(k in obj for k in ("id","files","candidate","version","restored","verified","snapshot")):
+            self.message.append("操作已完成，可检查下方状态。")
 
     def alert(self, message):
         QMessageBox.warning(self, "Bridge Studio", str(message))
@@ -104,12 +127,18 @@ class UpgradePanel(QWidget):
             index = self.snapshots.findData(old)
             if index >= 0:
                 self.snapshots.setCurrentIndex(index)
-            self.message.setPlainText(
-                "Bridge 后端状态\n" +
-                json.dumps({"unit": manager.current(),
-                            "private_backup_count": len(backups),
-                            "memory_storage": str(manager.snapshots.state)},
-                           ensure_ascii=False, indent=2))
+            state = manager.current()
+            runtime = state["working_directory"]
+            self.message.setHtml(
+                "<h2 style='color:#25375a'>Bridge 工作状态</h2>"
+                "<p><b style='color:#177a60'>● 已发现本机后端服务</b></p>"
+                "<p><b>当前后端位置</b><br>" + escape(runtime) + "</p>"
+                "<p><b>可恢复的本机备份</b><br>"
+                + str(len(backups)) + " 份</p>"
+                "<p><b>数据存储位置</b><br>"
+                + escape(str(manager.snapshots.state)) + "</p>"
+                "<p style='color:#758198'>此处只验证本机管理信息。"
+                "要确认 ChatGPT 网页端可用，请到“网页端协作”页进行真实读写测试。</p>")
         except Exception as exc:
             self.message.setPlainText("无法读取后端： " + str(exc))
 
