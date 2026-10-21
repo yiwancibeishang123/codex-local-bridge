@@ -7,7 +7,7 @@
 **在 ChatGPT 网页端规划，在自己的 Ubuntu 上让 Codex 修改、测试并交付代码。**
 
 [![Tests](https://github.com/yiwancibeishang123/codex-local-bridge/actions/workflows/ci.yml/badge.svg?branch=feat%2Fbridge-studio-v0.4)](docs/VALIDATION.md)
-[![Version](https://img.shields.io/badge/version-0.5.0a4-5366d5)](https://github.com/yiwancibeishang123/codex-local-bridge/releases)
+[![Version](https://img.shields.io/badge/version-0.6.0a2-5366d5)](https://github.com/yiwancibeishang123/codex-local-bridge/releases)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776ab)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 

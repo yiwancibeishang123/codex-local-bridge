@@ -155,6 +155,33 @@ class DataAccessTests(unittest.TestCase):
         self.assertEqual(status["status"],"applied")
         self.assertEqual(small.read_text(),"x,y\n5,6\n")
 
+    def test_custom_safe_file_extensions_are_locally_approved(self):
+        (self.dataset/"raw_sensor.dat").write_text("frame=1\nsample=2\n")
+        request=self.data.request("airgym",[],"datasets",custom_extensions=[".dat"])
+        self.assertEqual(request["status"],"pending_local_confirmation")
+        with self.assertRaises(PermissionError):
+            self.data.inspect("airgym","datasets/raw_sensor.dat")
+        self.data.approve_local(request["request_id"])
+        self.assertIn(".dat",self.data.status("airgym")["scopes"][0]["custom_extensions"])
+        preview=self.data.read_chunk("airgym","datasets/raw_sensor.dat",length=64)
+        self.assertIn("frame",preview["content"])
+        with self.assertRaises(ValueError):
+            self.data.request("airgym",[],"datasets",custom_extensions=[".exe"])
+        with self.assertRaises(ValueError):
+            self.data.request("airgym",[],"datasets",custom_extensions=["../secret"])
+        self.bridge.authorization.grant("airgym")
+        with self.assertRaises(ValueError):
+            self.data.request("airgym",[],"datasets",custom_extensions=[".pickle"],access="write_review")
+
+    def test_custom_extension_binary_is_not_exposed_as_text(self):
+        (self.dataset/"sensor.dat").write_bytes(bytes((0,1,2)) * 30)
+        req=self.data.request("airgym",[],directory="datasets",custom_extensions=[".dat"])
+        self.data.approve_local(req["request_id"])
+        info=self.data.inspect("airgym","datasets/sensor.dat")
+        self.assertIn("head_bytes_hex",info["analysis"])
+        with self.assertRaises(ValueError):
+            self.data.read_chunk("airgym","datasets/sensor.dat")
+
     def test_http_mcp_exports_profiles_and_scopes(self):
         from bridge.data_access import register_data_tools
         from mcp.server.fastmcp import FastMCP

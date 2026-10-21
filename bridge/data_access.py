@@ -43,6 +43,13 @@ MAX_SAMPLE_ROWS = 2000
 MAX_ANALYSIS_BYTES = 4 * 1024 * 1024
 MAX_BYTES_FOR_WRITE = 128 * 1024
 REQUEST_TTL = 3600
+_CUSTOM_EXTENSION = re.compile(r"^\.[a-z0-9][a-z0-9._+-]{0,15}$")
+_DENIED_CUSTOM = {".py", ".pyi", ".js", ".jsx", ".ts", ".tsx", ".sh",
+                  ".bat", ".cmd", ".exe", ".dll", ".so", ".a", ".o",
+                  ".jar", ".class", ".desktop", ".service", ".pem", ".key",
+                  ".p12", ".pfx", ".crt", ".der", ".env", ".kdbx", ".gpg",
+                  ".asc", ".sql", ".db", ".sqlite", ".sqlite3"}
+
 _SENSITIVE_FIELD = re.compile(r"(?i)(?:password|api[_-]?key|token|secret|credential|authorization|cookie)")
 
 
@@ -86,7 +93,7 @@ class DataAccess:
             {"id": profile, "extensions": list(ext), "write_review_supported":
              any(x in WRITE_TEXT_FORMATS for x in ext)}
             for profile, ext in PROFILES.items()],
-            "notice": "Reading large data is local and bounded. Binary modification is not provided."}
+            "notice": "Named format profiles or owner-approved custom extensions are supported. Large data stays local; binary modification is unavailable."}
 
     def _approved(self, project_id):
         project = self._project(project_id)
@@ -104,24 +111,31 @@ class DataAccess:
                 "code_include": p.get("include",[]),
                 "notice": "New data scope approvals take effect immediately without reloading the desktop app or MCP."}
 
-    def request(self, project_id, profiles, directory=".", access="read"):
+    def request(self, project_id, profiles, directory=".", access="read", custom_extensions=None):
         p = self._project(project_id)
-        if (not isinstance(profiles, list) or not profiles or len(profiles) > 7
+        custom = [] if custom_extensions is None else custom_extensions
+        if (not isinstance(custom,list) or len(custom)>16
+                or any(type(x) is not str or
+                       not _CUSTOM_EXTENSION.fullmatch(x) or x in _DENIED_CUSTOM
+                       for x in custom) or len(set(custom))!=len(custom)):
+            raise ValueError("Custom extensions must be safe lowercase data suffixes, e.g. .dat")
+        if (not isinstance(profiles, list) or len(profiles)>8
                 or any(type(x) is not str or x not in PROFILES for x in profiles)
-                or len(set(profiles)) != len(profiles)):
-            raise ValueError("Choose one or more named data profiles")
+                or len(set(profiles)) != len(profiles)
+                or not (profiles or custom)):
+            raise ValueError("Choose one or more named data profiles or custom data extensions")
         if access not in ("read", "write_review"):
             raise ValueError("Access must be read or write_review")
         if access == "write_review":
             if not self.bridge.authorization.active(project_id):
                 raise PermissionError("Write-review requires an existing locally authorized writable project")
-            if not (_types(profiles) & WRITE_TEXT_FORMATS):
-                raise ValueError("This profile contains no writable text formats")
+            if not ((_types(profiles) | set(custom)) & WRITE_TEXT_FORMATS):
+                raise ValueError("This scope contains no writable text formats")
         _, fd = _validate_dir(Path(p["root"]), directory)
         os.close(fd)
         request_id = secrets.token_hex(16)
         req = {"id":request_id, "project_id":project_id, "profiles":profiles,
-               "directory":directory, "access":access,
+               "custom_extensions":custom, "directory":directory, "access":access,
                "root_identity":list(_root_identity(Path(p["root"]))),
                "created_at":time.time(), "state":"pending"}
         self.store.put("data_access_request", request_id, req)
@@ -129,7 +143,7 @@ class DataAccess:
                                                 "profile_count":len(profiles), "access":access})
         return {"request_id":request_id, "status":"pending_local_confirmation",
                 "project_id":project_id, "directory":directory, "profiles":profiles,
-                "access":access, "local_action": "codex-local-bridge approve-data-scope "+request_id,
+                "custom_extensions":custom, "access":access, "local_action": "codex-local-bridge approve-data-scope "+request_id,
                 "notice":"A trusted local owner must confirm before this scope takes effect."}
 
     def request_status(self, request_id):
@@ -138,7 +152,8 @@ class DataAccess:
         q = self.store.get("data_access_request",request_id)
         if not q: raise ValueError("Unknown request")
         self._project(q["project_id"])
-        return {k:q[k] for k in ("id","project_id","directory","profiles","access","state")}
+        return {k:q[k] for k in ("id","project_id","directory","profiles",
+                                 "custom_extensions","access","state")}
 
     def approve_local(self, request_id):
         if not re.fullmatch(r"[0-9a-f]{32}",request_id):
@@ -160,10 +175,13 @@ class DataAccess:
                     if e["directory"]==req["directory"] and e["access"]==req["access"]]
             profiles = sorted(set(req["profiles"]).union(
                 *(set(e["profiles"]) for e in same)))
+            custom = sorted(set(req["custom_extensions"]).union(
+                *(set(e.get("custom_extensions",[])) for e in same)))
             scopes=[e for e in current.get("scopes",[])
                     if not (e["directory"]==req["directory"] and e["access"]==req["access"])]
             scopes.append({"directory":req["directory"],"profiles":profiles,
-                           "access":req["access"],"authorized_at":int(time.time())})
+                           "custom_extensions":custom, "access":req["access"],
+                           "authorized_at":int(time.time())})
             self.store.put("data_scope",p["id"],{"root_identity":req["root_identity"],"scopes":scopes})
             self.store.update("data_access_request",request_id,state="approved")
             self.store.audit("data_scope_approved",{"project":p["id"],"request":request_id})
@@ -182,13 +200,11 @@ class DataAccess:
         p=self._project(project_id)
         bits=_check_path(rel)
         suffix=Path(bits[-1]).suffix.lower()
-        if suffix not in {x for t in PROFILES.values() for x in t}:
-            raise PermissionError("Format not supported for research data tools")
         for scope in self._approved(project_id):
             base=scope["directory"]
             if base != "." and not rel.startswith(base+"/"):
                 continue
-            if suffix in _types(scope["profiles"]):
+            if suffix in (_types(scope["profiles"]) | set(scope.get("custom_extensions",[]))):
                 if write and (scope["access"]!="write_review"
                               or suffix not in WRITE_TEXT_FORMATS
                               or not self.bridge.authorization.active(project_id)):
@@ -258,12 +274,19 @@ class DataAccess:
             raise ValueError("Bad read offset/length")
         fd,st,ext=self._file(project_id,relative_path)
         try:
-            if ext not in TEXT_FORMATS:
-                raise ValueError("Binary data cannot be dumped into chat; use inspect_project_data")
+            known_binary = set().union(*map(set, PROFILES.values())) - TEXT_FORMATS
+            if ext in known_binary:
+                raise ValueError("Binary/scientific data cannot be dumped as text; use inspect_project_data")
             if offset>=st.st_size:
                 return {"path":relative_path,"offset":offset,"bytes_read":0,"content":"","eof":True}
             os.lseek(fd,offset,os.SEEK_SET)
             data=os.read(fd,length)
+            if b"\x00" in data:
+                raise ValueError("Selected custom extension contains binary data; use inspect_project_data")
+            # Reject content that is not UTF-8 for a custom suffix. Non-zero
+            # offsets must be placed at UTF-8 character boundaries.
+            if ext not in TEXT_FORMATS:
+                data.decode("utf-8",errors="strict")
             # A credentials pattern may cross the requested chunk boundary.
             # Reject the entire chunk rather than returning partial secrets.
             os.lseek(fd,max(0,offset-512),os.SEEK_SET)
@@ -442,9 +465,9 @@ def register_data_tools(mcp, bridge):
         return api.profiles(project_id)
 
     @mcp.tool(annotations=write)
-    def request_data_access(project_id:str,profiles:list[str],directory:str=".",access:str="read")->dict:
-        """Request directory-scoped research data read or reviewed small-text-write access. Local owner approves once."""
-        return api.request(project_id,profiles,directory,access)
+    def request_data_access(project_id:str,profiles:list[str],directory:str=".",access:str="read",custom_extensions:list[str]|None=None)->dict:
+        """Request format presets or custom safe extensions for a directory; local owner approves, live without restart."""
+        return api.request(project_id,profiles,directory,access,custom_extensions)
 
     @mcp.tool(annotations=read)
     def get_data_access_request(request_id:str)->dict:
