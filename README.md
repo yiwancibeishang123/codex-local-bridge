@@ -6,8 +6,8 @@
 
 **在 ChatGPT 网页端规划，在自己的 Ubuntu 上让 Codex 修改、测试并交付代码。**
 
-[![Tests](https://img.shields.io/badge/local_tests-71_passed-success)](docs/VALIDATION.md)
-[![Version](https://img.shields.io/badge/version-0.3.2-0f766e)](https://github.com/yiwancibeishang123/codex-local-bridge/releases)
+[![Tests](https://github.com/yiwancibeishang123/codex-local-bridge/actions/workflows/ci.yml/badge.svg?branch=feat%2Fbridge-studio-v0.4)](docs/VALIDATION.md)
+[![Version](https://img.shields.io/badge/version-0.6.0a2-5366d5)](https://github.com/yiwancibeishang123/codex-local-bridge/releases)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776ab)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -16,6 +16,14 @@
 </div>
 
 ---
+
+> **v0.7 MCP-first · 可信项目文件夹模式（开发预览）**：为已在本机注册并授予读写的项目，ChatGPT 直接浏览整个文件夹（含隐藏文件、非白名单扩展名、模型和大数据）、分块读取所有普通文件、一次调用写入小文件、按块写入大型文本/二进制文件。**无需再按扩展名、子目录逐次授权**；保留原文件备份、SHA 校验、项目根目录隔离和自动共享记忆记录。Codex 仅按需委派，现有共享 SQLite 记忆 MCP 继续可用。参见 [可信项目模式：MCP 直接访问整个文件夹](docs/V07_TRUSTED_WORKSPACE.md)。\n\n> **v0.6 MCP-first 开发预览**：ChatGPT 网页直接申请项目数据格式与子目录的权限，不需要桌面常驻刷新；本地用户一次确认后，MCP 动态读取权限立即生效（不重启服务）。支持 Rosbag DB3、点云、NumPy、CSV、JSONL 等**大文件本地有界统计**。数据写入单独按格式授权：普通文本数据需逐次本机审核；二进制和模型文件禁止远程直接覆盖。详见 [科研数据权限指南](docs/V06_DATA_MCP.md)。\n\n> **v0.5 Alpha.5：可视化安全测试配置 + ChatGPT 网页协作验收**：针对 airgym 等“缺少沙箱测试命令”导致无法开启读写的问题，在项目权限页直接选择已有 unittest 测试或创建基础 Python 语法自检；新增“网页端协作”页，一键复制 ChatGPT 实际读写验收指令，查看本机真实文件应用记录和 Codex 执行/测试/写回状态。任务、备份不再直接展示 JSON。详见 [项目授权与网页端协作验收](docs/V05_WEB_COLLABORATION.md)。\n\n> **v0.5 Alpha.4：统一连接中心与首次使用引导**：本地 Qt 应用逐项检查 Bridge、Codex、SQLite、Tailscale、MCP 与远端 OAuth 的验证边界；首次启动可选择已经存在的 Bridge 配置；本机确认后可重启 Bridge、设置项目自动记忆，且新增对 `.deb` 环境下注册新项目的修复。参见 [连接中心与共享记忆](docs/V05_CONNECTION_CENTER.md)。\n\n> **v0.5 Alpha.3：图形化升级与回滚**：Qt 桌面新增「升级与恢复」，可直接创建 SQLite 一致性备份、验证 SHA256、选择受信任的本地候选后端升级并验证连接；失败自动尝试回滚。桌面 .deb 更新可由界面交给 Ubuntu 软件安装器。详见 [图形升级与恢复指南](docs/V05_UPGRADE_RECOVERY.md)。升级 MCP 后端仍须本机确认，绝不自动更新原 `main` 稳定版。\n\n> **可安装 .deb + 项目级 systemd 写入白名单 + 独立 Codex MCP 记忆接口**：新版提供 Ubuntu amd64 安装包 CI，支持像普通软件一样在 Ubuntu 软件安装器双击安装；普通 VS Code Codex 可选择注册本地记忆服务。详见 [安装与共享记忆指南](docs/V05_INSTALLER_MEMORY.md) 与 [构建工作流](https://github.com/yiwancibeishang123/codex-local-bridge/actions/workflows/deb.yml)。注意：原 MCP 后端仍需单独部署。
+
+> **v0.5 Native Alpha（开发中）**：全新 PySide6 原生窗口，不再依赖浏览器使用 Studio；同一个工作台中可查看项目、选择关闭/只读/读写权限，提交 Codex 任务，浏览文件及管理项目级 SQLite 长期记忆。首次在项目目录运行：`bash scripts/install_native.sh`，之后从 Ubuntu 应用菜单点击即可。**只在开发分支，尚未升级正在运行的 MCP**。详见 [原生桌面版](docs/V05_NATIVE_ALPHA.md)。
+
+> **新版：Ubuntu 桌面一键启动**：首次执行一次 `python3 scripts/studio_desktop.py install`，以后从 Ubuntu 应用菜单点击 **Bridge Studio** 即可启动本地控制台并打开浏览器。可固定在 Dock，自动检测/启动服务，不需要每天输入一堆命令。[桌面安装说明](docs/V04_ONE_CLICK_DESKTOP.md)。
+
+> **Bridge Studio v0.4 Beta（开发分支）**：现已提供本地中文管理 UI、项目级 SQLite 记忆、手动保存任务验收结果、记忆交接与测试状态详情。测试地址 `http://127.0.0.1:8768`（**仅 Ubuntu 本机**）。[查看 Beta 安装与限制](docs/V04_BETA_RELEASE.md) · [UI 使用说明](docs/STUDIO_V04_QUICKSTART.md) · [记忆交接协议](docs/V04_HANDOFF_GUIDE.md)。**未自动部署到现有 MCP；稳定版仍在 main。**
 
 ## 它解决什么问题
 

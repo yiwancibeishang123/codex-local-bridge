@@ -45,9 +45,10 @@ def build_server(config,with_worker=True):
         """List only locally authorized projects and their file/test scopes."""
         return bridge.list_projects()
     @server.tool(annotations=write)
-    def delegate_task(project_id:str,prompt:str,mode:str='read',request_id:str|None=None) -> dict:
+    def delegate_task(project_id:str,prompt:str,mode:str='read',request_id:str|None=None,
+                      context_paths:list[str]|None=None) -> dict:
         """Queue a task. write_test uses an active project grant or separate local CLI approval; submission is not completion."""
-        return bridge.submit(project_id,prompt,mode,request_id=request_id)
+        return bridge.submit(project_id,prompt,mode,request_id=request_id,context_paths=context_paths)
     @server.tool(annotations=read)
     def get_task_status(task_id:str) -> dict:
         """Poll state; execution success, tests passed, applied changes and commits are separate."""
@@ -57,13 +58,20 @@ def build_server(config,with_worker=True):
         """Return proposed diff, test output, paginated logs and exact review digest."""
         return bridge.result(task_id,offset,limit)
     @server.tool(annotations=write)
-    def continue_task(task_id:str,prompt:str,mode:str='read',request_id:str|None=None) -> dict:
+    def continue_task(task_id:str,prompt:str,mode:str='read',request_id:str|None=None,
+                      context_paths:list[str]|None=None) -> dict:
         """Continue the same saved Codex thread from a terminal task; active project authorization or separate approval for write_test."""
         t=bridge.task(task_id)
-        return bridge.submit(t['project_id'],prompt,mode,task_id,request_id)
+        return bridge.submit(t['project_id'],prompt,mode,task_id,request_id,context_paths)
     # BEGIN LOCAL FILE TOOLS 0.2 -- project-scoped, locally approved edits
     from .filetools import create_file_bridge, register_file_tools
     register_file_tools(server, create_file_bridge(bridge))
+    from .memory_tools import register_memory_tools
+    register_memory_tools(server, bridge)
+    from .data_access import register_data_tools
+    register_data_tools(server, bridge)
+    from .trusted_workspace import register_trusted_workspace_tools
+    register_trusted_workspace_tools(server, bridge)
     # END LOCAL FILE TOOLS 0.2
     @server.custom_route('/consent',methods=['GET'])
     async def consent(request):

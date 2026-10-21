@@ -1,0 +1,65 @@
+name: Build Ubuntu Desktop Package
+on:
+  push:
+    branches: [feat/bridge-studio-v0.4]
+    paths:
+      - 'bridge/**'
+      - 'scripts/**'
+      - 'docs/assets/**'
+      - 'pyproject.toml'
+      - '.github/workflows/deb.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-deb:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install Qt runtime and packaging dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libegl1 libgl1 libopengl0 libxcb-cursor0 libxkbcommon-x11-0
+          python -m pip install -e '.[desktop,test]' 'pyinstaller>=6.13,<7'
+      - name: Build standalone Debian desktop application
+        run: python scripts/build_deb.py --output release
+      - name: Inspect package and ensure no post-install scripts
+        run: |
+          dpkg-deb --field release/*.deb Package Version Architecture
+          dpkg-deb --contents release/*.deb | head -40
+          if dpkg-deb --ctrl-tarfile release/*.deb | tar -tf - | grep -Eq '^\./(postinst|preinst|prerm|postrm)$'; then
+            echo "Unexpected maintainer script" >&2
+            exit 1
+          fi
+      - name: Run actual frozen Qt window in headless Ubuntu
+        shell: bash
+        run: |
+          set -euo pipefail
+          temp="$(mktemp -d)"
+          trap 'rm -rf "$temp"' EXIT
+          mkdir -m 700 "$temp/state"
+          python - "$temp" <<'PY'
+          import json, pathlib, os, sys
+          root=pathlib.Path(sys.argv[1])
+          f=root/'config.json'
+          f.write_text(json.dumps({'state_dir':str(root/'state'),'projects':[],
+                                   'codex_command':['codex','app-server'],
+                                   'public_url':'http://127.0.0.1:8767'}))
+          f.chmod(0o600)
+          PY
+          export BRIDGE_CONFIG="$temp/config.json"
+          export QT_QPA_PLATFORM=offscreen
+          export BRIDGE_STUDIO_SMOKE=1
+          mkdir -p "$temp/extracted"
+          dpkg-deb --extract release/*.deb "$temp/extracted"
+          timeout 35 "$temp/extracted/opt/bridge-studio/bridge-studio"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BridgeStudio-Ubuntu22.04-amd64-deb
+          path: release/*.deb
+          if-no-files-found: error
+          retention-days: 30

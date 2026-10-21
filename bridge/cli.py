@@ -38,12 +38,37 @@ def main():
     # END LOCAL FILE TOOLS 0.2
 
     p=sub.add_parser('grant-project'); p.add_argument('project_id'); p.add_argument('--hours',type=int)
+    p=sub.add_parser('approve-data-scope'); p.add_argument('request_id')
+    p=sub.add_parser('approve-data-write'); p.add_argument('proposal_id')
+    p=sub.add_parser('revoke-data-scope'); p.add_argument('project_id')
     for name in ('revoke-project','project-policy','project-systemd'):
         p=sub.add_parser(name); p.add_argument('project_id')
 
     args=parser.parse_args()
     config=load_config(); bridge=Bridge(config)
-    if args.command=='register-maintenance':
+    if args.command in ('approve-data-scope','approve-data-write','revoke-data-scope'):
+        from .data_access import DataAccess
+        api=DataAccess(bridge)
+        if not os.isatty(0):
+            raise PermissionError('Local interactive approval required')
+        if args.command=='approve-data-scope':
+            print(json.dumps(api.request_status(args.request_id), ensure_ascii=False, indent=2))
+            token='AUTHORIZE DATA '+args.request_id
+            if input('Type '+token+' to approve: ') != token:
+                raise SystemExit('Not approved')
+            result=api.approve_local(args.request_id)
+        elif args.command=='revoke-data-scope':
+            token='REVOKE DATA '+args.project_id
+            if input('Type '+token+' to revoke: ') != token:
+                raise SystemExit('Not approved')
+            result=api.revoke_local(args.project_id)
+        else:
+            token='APPLY DATA '+args.proposal_id
+            if input('Type '+token+' to apply this change: ') != token:
+                raise SystemExit('Not approved')
+            result=api.approve_text_write_local(args.proposal_id)
+        print(json.dumps(result,ensure_ascii=False,indent=2))
+    elif args.command=='register-maintenance':
         from .maintenance import register_maintenance, save_registration, PROJECT_ID
         original=config_path().read_bytes()
         with bridge.authorization.locked():

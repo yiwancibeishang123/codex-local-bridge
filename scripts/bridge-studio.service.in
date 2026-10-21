@@ -1,0 +1,27 @@
+[Unit]
+Description=Bridge Studio local AI workspace (owner-only UI)
+After=codex-local-bridge.service
+Wants=codex-local-bridge.service
+
+[Service]
+Type=simple
+WorkingDirectory=@ROOT@
+ExecStart=/usr/bin/python3 @ROOT@/scripts/bridge_studio.py
+Environment=PYTHONUNBUFFERED=1
+Environment=PORT=8768
+UMask=0077
+Restart=on-failure
+RestartSec=5
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/share/codex-local-bridge %h/.config/codex-local-bridge
+PrivateTmp=true
+NoNewPrivileges=true
+MemoryMax=512M
+TasksMax=64
+
+# Important: the Python server binds 127.0.0.1 only.
+# Never forward 8768 via Tailscale Funnel or expose it on 0.0.0.0.
+
+[Install]
+WantedBy=default.target
