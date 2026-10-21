@@ -119,7 +119,13 @@ def test_stdio_sdk_discovery_and_harmless_call(config,tmp_path):
         async with stdio_client(StdioServerParameters(command=sys.executable,args=['-m','bridge.stdio'],env=env)) as (read,write):
             async with ClientSession(read,write) as session:
                 await session.initialize()
-                tools=await session.list_tools();assert len(tools.tools)==15
+                tools=await session.list_tools()
+                names={item.name for item in tools.tools}
+                assert len(names)==23
+                assert {"list_projects","read_project_file","request_write_file",
+                        "get_project_data_access","request_data_access",
+                        "inspect_project_data","read_project_data_chunk",
+                        "request_data_text_write"}.issubset(names)
                 result=await session.call_tool('list_projects',{});assert not result.isError
                 assert 'demo' in result.content[0].text
     asyncio.run(run())

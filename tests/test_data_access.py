@@ -57,7 +57,7 @@ class DataAccessTests(unittest.TestCase):
             conn.execute("CREATE TABLE topics (id INTEGER,name TEXT,type TEXT,serialization_format TEXT)")
             conn.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY, topic_id INTEGER, timestamp INTEGER, data BLOB)")
             conn.execute("INSERT INTO topics VALUES(1,'/livox/lidar','livox_ros_driver2/msg/CustomMsg','cdr')")
-            conn.execute("INSERT INTO messages VALUES(1,1,123,b'abc')")
+            conn.execute("INSERT INTO messages VALUES(?,?,?,?)",(1,1,123,b'abc'))
         self.db.chmod(0o600)
 
     def authorize(self,profiles=("arrays",),directory="datasets",access="read"):
