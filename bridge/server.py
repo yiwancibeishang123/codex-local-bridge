@@ -66,6 +66,8 @@ def build_server(config,with_worker=True):
     register_file_tools(server, create_file_bridge(bridge))
     from .memory_tools import register_memory_tools
     register_memory_tools(server, bridge)
+    from .data_access import register_data_tools
+    register_data_tools(server, bridge)
     # END LOCAL FILE TOOLS 0.2
     @server.custom_route('/consent',methods=['GET'])
     async def consent(request):
