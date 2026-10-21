@@ -121,11 +121,12 @@ def test_stdio_sdk_discovery_and_harmless_call(config,tmp_path):
                 await session.initialize()
                 tools=await session.list_tools()
                 names={item.name for item in tools.tools}
-                assert len(names)==23
+                assert len(names)==32
                 assert {"list_projects","read_project_file","request_write_file",
                         "get_project_data_access","request_data_access",
                         "inspect_project_data","read_project_data_chunk",
-                        "request_data_text_write"}.issubset(names)
+                        "request_data_text_write", "workspace_info", "browse_workspace",
+                        "read_workspace_file", "write_workspace_file", "recent_workspace_changes"}.issubset(names)
                 result=await session.call_tool('list_projects',{});assert not result.isError
                 assert 'demo' in result.content[0].text
     asyncio.run(run())

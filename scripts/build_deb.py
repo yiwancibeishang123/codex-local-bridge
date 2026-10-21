@@ -14,7 +14,7 @@ import subprocess
 import sys
 import tempfile
 
-VERSION = "0.6.0~alpha2"
+VERSION = "0.7.0~alpha1"
 PACKAGE = "bridge-studio-native"
 
 def exec_checked(argv):
