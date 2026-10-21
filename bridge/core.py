@@ -32,7 +32,7 @@ class Bridge:
             raise ValueError('Project is not authorized')
         return self.projects[id]
 
-    def sources(self, p, root=None):
+    def sources(self, p, root=None, extra_paths=None, include_tests=False):
         root = Path(root or p['root'])
         # A local owner can name a small context explicitly for a non-Git or
         # large workspace. Remote callers cannot supply or broaden these paths.
@@ -41,6 +41,33 @@ class Bridge:
             paths = git(root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard').split('\0')
         elif not isinstance(paths,list) or not all(isinstance(x,str) for x in paths):
             raise ValueError('context_files must be a local list of relative file paths')
+        # ChatGPT may select exact authorized text inputs for one Codex task.
+        # Do not force the owner to edit context_files on every handoff.
+        explicit = extra_paths or []
+        if not isinstance(explicit,list) or len(explicit)>40 or any(
+                not isinstance(x,str) for x in explicit):
+            raise ValueError('context_paths must list <=40 project-relative files')
+        paths = list(dict.fromkeys(list(paths)+explicit))
+        # A unittest suite is not usable if its source files are absent from
+        # the isolated snapshot. Copy only requested test_*.py, never imports
+        # from outside the authorized project or arbitrary executable files.
+        if include_tests:
+            for command in p.get('tests',[]):
+                if isinstance(command,list) and "-s" in command:
+                    pos=command.index("-s")
+                    if pos+1<len(command):
+                        rel_dir=command[pos+1]
+                        from .filetools import _check_path
+                        try:
+                            bits=_check_path(rel_dir)
+                            test_dir=root.joinpath(*bits)
+                            if test_dir.is_dir() and not test_dir.is_symlink():
+                                paths.extend(str(pth.relative_to(root)) for pth in
+                                             sorted(test_dir.glob("test_*.py"))[:32]
+                                             if pth.is_file() and not pth.is_symlink())
+                        except (ValueError,OSError):
+                            continue
+        paths = list(dict.fromkeys(paths))
         result = {}; total = 0
         for rel in paths:
             if not rel: continue
@@ -72,14 +99,15 @@ class Bridge:
     def scope(self, task):
         p = self.project(task['project_id'])
         return digest({'task': task['id'], 'prompt': task['prompt'], 'mode': task['mode'],
-                       'project': p, 'parent': task.get('parent_id')})
+                       'project': p, 'parent': task.get('parent_id'),
+                       'context_paths':task.get('context_paths',[])})
 
-    def submit(self, project_id, prompt, mode='read', parent_id=None, request_id=None):
+    def submit(self, project_id, prompt, mode='read', parent_id=None, request_id=None, context_paths=None):
         with (self.store.directory/'submission.lock').open('a') as lock:
             fcntl.flock(lock,fcntl.LOCK_EX)
-            return self._submit(project_id,prompt,mode,parent_id,request_id)
+            return self._submit(project_id,prompt,mode,parent_id,request_id,context_paths)
 
-    def _submit(self, project_id, prompt, mode='read', parent_id=None, request_id=None):
+    def _submit(self, project_id, prompt, mode='read', parent_id=None, request_id=None, context_paths=None):
         p = self.project(project_id)
         if len([t for t in self.store.all('task') if t['state'] not in TERMINAL]) >= 100:
             raise ValueError('Task queue limit reached')
@@ -87,11 +115,20 @@ class Bridge:
         if mode not in p.get('allowed_modes',['read','write_test']):
             raise PermissionError('Task mode is not authorized for this project')
         if not prompt.strip() or len(prompt) > 24000: raise ValueError('Prompt must be 1..24000 chars')
+        if context_paths is None: context_paths=[]
+        if not isinstance(context_paths,list) or len(context_paths)>40 or not all(
+                isinstance(x,str) and x for x in context_paths):
+            raise ValueError('context_paths must list <=40 project text files')
+        from .security import checked
+        for rel in context_paths:
+            path=checked(p['root'],rel,p['include'])
+            if not path.is_file() or path.stat().st_size>128*1024:
+                raise ValueError('Selected context path missing or too large')
         if request_id:
             existing = self.store.get('idempotency', request_id)
             if existing:
                 task = self.task(existing['task_id'])
-                if (task['project_id'],task['prompt'],task['mode'],task.get('parent_id')) != (project_id,prompt,mode,parent_id):
+                if (task['project_id'],task['prompt'],task['mode'],task.get('parent_id'),task.get('context_paths',[])) != (project_id,prompt,mode,parent_id,context_paths):
                     raise ValueError('Idempotency key reused with different request')
                 return self.status(task['id'])
         parent = self.task(parent_id) if parent_id else None
@@ -101,6 +138,7 @@ class Bridge:
             raise ValueError('Parent has no snapshot to resume')
         project_grant=self.authorization.active(project_id) if mode=='write_test' and ordinary_tests(p.get('tests',[])) else None
         task = {'id':uuid.uuid4().hex, 'project_id':project_id,'prompt':prompt,'mode':mode,
+                'context_paths':context_paths,
                 'parent_id':parent_id,'thread_id':parent.get('thread_id') if parent else None,
                 'state':'awaiting_approval' if mode=='write_test' and not project_grant else 'queued',
                 'project_grant_id':project_grant['id'] if project_grant else None,
@@ -152,7 +190,8 @@ class Bridge:
         t=self.task(id)
         if t['state'] not in ('failed','interrupted'): raise ValueError('Only failed/interrupted tasks can retry')
         # No blind replay: new child task, new local grant, saved context/thread.
-        return self.submit(t['project_id'], t['prompt'], t['mode'], id)
+        return self.submit(t['project_id'], t['prompt'], t['mode'], id,
+                           context_paths=t.get('context_paths',[]))
 
     async def log(self,id,method,params):
         directory=self.store.directory/'logs'; directory.mkdir(mode=0o700,exist_ok=True)
@@ -181,7 +220,8 @@ class Bridge:
             destination=self.store.directory/'snapshots'/id
             destination.mkdir(parents=True,mode=0o700,exist_ok=False)
             parent=self.task(t['parent_id']) if t.get('parent_id') else None
-            context=self.sources(p,parent['snapshot'] if parent and not parent.get('changes_applied') else None)
+            context=self.sources(p,parent['snapshot'] if parent and not parent.get('changes_applied') else None,
+                                 extra_paths=t.get('context_paths',[]),include_tests=t['mode']=='write_test')
             if parent:
                 prior=self.store.get('result',parent['id']) or {}
                 t={**t,'prompt':t['prompt']+'\nPrevious verified Bridge test results:\n'+json.dumps(prior.get('tests',[]))}
