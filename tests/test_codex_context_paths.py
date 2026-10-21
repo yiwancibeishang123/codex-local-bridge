@@ -62,6 +62,10 @@ class CodexHandoffContextTests(unittest.TestCase):
             full=snap/path
             full.parent.mkdir(parents=True,exist_ok=True)
             full.write_text(content)
+        # Production snapshots are initialized as Git repos before bubblewrap,
+        # so reproduce its existing .git directory in this isolated fixture.
+        subprocess.run(["git","init","--quiet",str(snap)],check=True,
+                       capture_output=True,timeout=10)
         try:
             test_result=asyncio.run(self.bridge.run_test(
                 snap,p["tests"][0],"sandbox-test-task"))
