@@ -200,6 +200,11 @@ class DataAccess:
         p=self._project(project_id)
         bits=_check_path(rel)
         suffix=Path(bits[-1]).suffix.lower()
+        # The owner has already granted this exact project automatic write.
+        # Do not force a second permission workflow just to inspect its data.
+        # Data writes still require their normal separate review profile.
+        if not write and self.bridge.authorization.active(project_id):
+            return p,bits,suffix
         for scope in self._approved(project_id):
             base=scope["directory"]
             if base != "." and not rel.startswith(base+"/"):
@@ -235,6 +240,7 @@ class DataAccess:
         if type(offset)!=int or offset<0 or offset>100000 or type(limit)!=int or not 1<=limit<=200:
             raise ValueError("Invalid directory pagination")
         bits,fd=_validate_dir(Path(p["root"]),relative_dir)
+        trusted=bool(self.bridge.authorization.active(project_id))
         try:
             items=sorted(os.listdir(fd))
             if len(items)>100000:
@@ -248,7 +254,7 @@ class DataAccess:
                     st=os.stat(name,dir_fd=fd,follow_symlinks=False)
                     if stat.S_ISDIR(st.st_mode):
                         # Reveal subdirectory names only within explicitly approved parent trees.
-                        if not any(sc["directory"]=="." or rel.startswith(sc["directory"]+"/")
+                        if not trusted and not any(sc["directory"]=="." or rel.startswith(sc["directory"]+"/")
                                    or sc["directory"].startswith(rel+"/") or sc["directory"]==rel
                                    for sc in self._approved(project_id)):
                             continue
